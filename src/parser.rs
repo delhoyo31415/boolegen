@@ -3,7 +3,7 @@ use crate::{
     lexer::{Lexer, OperatorToken, Precedence, Token},
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum BinaryOperator {
     And,
     Or,
@@ -73,7 +73,7 @@ impl BinaryOperator {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum ExpressionNode {
     BinaryExpression {
         lhs: Box<ExpressionNode>,
@@ -189,4 +189,44 @@ impl Parser {
 #[derive(Debug)]
 pub struct SyntaxTree {
     root: Box<ExpressionNode>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parser_correctly_parses_expression() {
+        let tree = Parser::parse_from_str(
+            "a -> ~(c | b & d)"
+        ).unwrap();
+        
+        let expected = Box::new(ExpressionNode::BinaryExpression {
+            lhs: Box::new(ExpressionNode::Var("a".to_string())), 
+            rhs: Box::new(ExpressionNode::NotExpression(
+                Box::new(ExpressionNode::BinaryExpression { 
+                    lhs: Box::new(ExpressionNode::BinaryExpression { 
+                        lhs: Box::new(ExpressionNode::Var("c".to_string())), 
+                        rhs: Box::new(ExpressionNode::Var("b".to_string())),
+                        op: BinaryOperator::Or
+                    }), 
+                    rhs: Box::new(ExpressionNode::Var("d".to_string())), 
+                    op: BinaryOperator::And 
+                })
+            )),
+            op: BinaryOperator::Conditional 
+        });
+
+        assert_eq!(tree.root, expected);
+    }
+    
+    #[test]
+    fn parser_detects_errors() {
+        assert!(Parser::parse_from_str("").is_err());
+        assert!(Parser::parse_from_str("(a").is_err());
+        assert!(Parser::parse_from_str("a) -> c").is_err());
+        assert!(Parser::parse_from_str("a~b").is_err());
+        assert!(Parser::parse_from_str("a b <-> d").is_err());
+        assert!(Parser::parse_from_str("a & ()").is_err());
+    }
 }
