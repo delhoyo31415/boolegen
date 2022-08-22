@@ -1,6 +1,6 @@
 use crate::{
     error::BooleExprError,
-    lexer::{Lexer, OperatorToken, Token, Precedence},
+    lexer::{Lexer, OperatorToken, Precedence, Token},
 };
 
 #[derive(Debug)]
@@ -107,8 +107,8 @@ impl Parser {
         }
     }
 
-    fn parse_expression(&mut self, precedence: Precedence) -> Result<Box<ExpressionNode>, BooleExprError> {
-        let mut lhs = match self.lexer.consume() {
+    fn parse_prefix(&mut self) -> Result<Box<ExpressionNode>, BooleExprError> {
+        let lhs = match self.lexer.consume() {
             Token::Operator(OperatorToken::Tilde) => {
                 let expr = self.parse_expression(OperatorToken::Tilde.precedende())?;
                 Box::new(ExpressionNode::NotExpression(expr))
@@ -123,11 +123,19 @@ impl Parser {
             }
             wrong_token => {
                 return self.error(format!(
-                    "Unexpected token '{wrong_token:?}', expected identifier, ~ or ("
+                    "Unexpected token '{wrong_token}', expected identifier, ~ or ("
                 ))
             }
         };
 
+        Ok(lhs)
+    }
+
+    fn parse_infix(
+        &mut self,
+        mut lhs: Box<ExpressionNode>,
+        precedence: Precedence,
+    ) -> Result<Box<ExpressionNode>, BooleExprError> {
         loop {
             match self.lexer.peek() {
                 Token::Operator(op) => {
@@ -141,17 +149,25 @@ impl Parser {
                     let op = self.parse_binary_operator(&op).unwrap();
 
                     lhs = Box::new(ExpressionNode::BinaryExpression { lhs, rhs, op })
-                },
+                }
                 Token::RParen | Token::Eof => break,
                 wrong_token => {
                     return self.error(format!(
-                        "Unexpected token '{wrong_token:?}', expected binary operator, '(' or EOF"
+                        "Unexpected token '{wrong_token}', expected binary operator, '(' or EOF"
                     ))
                 }
             }
         }
-
         Ok(lhs)
+    }
+
+    fn parse_expression(
+        &mut self,
+        precedence: Precedence,
+    ) -> Result<Box<ExpressionNode>, BooleExprError> {
+        let lhs = self.parse_prefix()?;
+        let expr = self.parse_infix(lhs, precedence);
+        expr
     }
 
     // If op is not a binary operator, return None
