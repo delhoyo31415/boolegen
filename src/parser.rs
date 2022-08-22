@@ -1,6 +1,6 @@
 use crate::{
     error::BooleExprError,
-    lexer::{Lexer, OperatorToken, Token},
+    lexer::{Lexer, OperatorToken, Token, Precedence},
 };
 
 #[derive(Debug)]
@@ -99,7 +99,7 @@ impl Parser {
     }
 
     pub fn parse(&mut self) -> Result<SyntaxTree, BooleExprError> {
-        let expr = self.parse_expression(0)?;
+        let expr = self.parse_expression(Precedence::min())?;
         if self.lexer.peek() == Token::Eof {
             Ok(SyntaxTree { root: expr })
         } else {
@@ -107,8 +107,7 @@ impl Parser {
         }
     }
 
-    // TODO: create newtype for precedence
-    fn parse_expression(&mut self, precedence: u8) -> Result<Box<ExpressionNode>, BooleExprError> {
+    fn parse_expression(&mut self, precedence: Precedence) -> Result<Box<ExpressionNode>, BooleExprError> {
         let mut lhs = match self.lexer.consume() {
             Token::Operator(OperatorToken::Tilde) => {
                 let expr = self.parse_expression(OperatorToken::Tilde.precedende())?;
@@ -116,13 +115,12 @@ impl Parser {
             }
             Token::Identifier(name) => Box::new(ExpressionNode::Var(name)),
             Token::LParen => {
-                let expr = self.parse_expression(0)?;
+                let expr = self.parse_expression(Precedence::min())?;
                 if self.lexer.consume() != Token::RParen {
                     return self.error("Missing closing parenthesis".to_string());
                 }
                 expr
             }
-            // TODO: add display trait to token
             wrong_token => {
                 return self.error(format!(
                     "Unexpected token '{wrong_token:?}', expected identifier, ~ or ("

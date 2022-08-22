@@ -1,6 +1,15 @@
 use std::fmt::Display;
 
-use super::error::BooleExprError;
+use crate::error::BooleExprError;
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+pub struct Precedence(pub u32);
+
+impl Precedence {
+    pub fn min() -> Self {
+        Self(0)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum OperatorToken {
@@ -22,11 +31,11 @@ impl OperatorToken {
         }
     }
 
-    pub fn precedende(&self) -> u8 {
+    pub fn precedende(&self) -> Precedence {
         match self {
-            OperatorToken::Arrow | OperatorToken::DoubleArrow => 1,
-            OperatorToken::Ampersand | OperatorToken::Pipe => 2,
-            OperatorToken::Tilde => 3,
+            OperatorToken::Arrow | OperatorToken::DoubleArrow => Precedence(1),
+            OperatorToken::Ampersand | OperatorToken::Pipe => Precedence(2),
+            OperatorToken::Tilde => Precedence(3),
         }
     }
 }
@@ -48,7 +57,7 @@ impl Token {
             Token::Identifier(name) => name.as_str(),
             Token::LParen => "(",
             Token::RParen => ")",
-            Token::Eof => ""
+            Token::Eof => "",
         }
     }
 }
