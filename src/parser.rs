@@ -138,7 +138,7 @@ impl Parser {
     ) -> Result<Box<ExpressionNode>, BooleExprError> {
         loop {
             match self.lexer.peek() {
-                Token::Operator(op) => {
+                Token::Operator(op) if op.is_binary() => {
                     // This implies that in case of a tie, the operator will be associated to the left
                     if precedence >= op.precedende() {
                         break;

@@ -21,6 +21,10 @@ pub enum OperatorToken {
 }
 
 impl OperatorToken {
+    pub fn is_binary(&self) -> bool {
+        *self != OperatorToken::Tilde
+    }
+
     pub fn lexeme(&self) -> &'static str {
         match self {
             OperatorToken::Tilde => "~",
