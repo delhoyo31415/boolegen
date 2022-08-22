@@ -57,7 +57,7 @@ impl Token {
             Token::Identifier(name) => name.as_str(),
             Token::LParen => "(",
             Token::RParen => ")",
-            Token::Eof => "",
+            Token::Eof => "EOF",
         }
     }
 }
@@ -93,6 +93,11 @@ impl Lexer {
 
     pub fn peek(&self) -> Token {
         self.tokens.get(self.index).cloned().unwrap_or(Token::Eof)
+    }
+
+    // A slice to the remaining tokens
+    pub fn as_slice(&self) -> &[Token] {
+        &self.tokens[self.index..]
     }
 }
 
@@ -198,5 +203,49 @@ impl Iterator for TokenGenerator<'_> {
             chr if chr.is_alphabetic() => Some(self.lex_identifier()),
             other => Some(self.error(&other.to_string())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lexer_with_correct_lexemes() {
+        let lexer = Lexer::from_str("a -><->cd&").unwrap();
+        let expected = [
+            Token::Identifier("a".to_string()),
+            Token::Operator(OperatorToken::Arrow),
+            Token::Operator(OperatorToken::DoubleArrow),
+            Token::Identifier("cd".to_string()),
+            Token::Operator(OperatorToken::Ampersand),
+            Token::Eof
+        ];
+        assert_eq!(lexer.as_slice(), expected);
+
+        let lexer = Lexer::from_str("a|b~").unwrap();
+        let expected = [
+            Token::Identifier("a".to_string()),
+            Token::Operator(OperatorToken::Pipe),
+            Token::Identifier("b".to_string()),
+            Token::Operator(OperatorToken::Tilde),
+            Token::Eof
+        ];
+        assert_eq!(lexer.as_slice(), expected);
+
+        let lexer = Lexer::from_str("").unwrap();
+        let expected = [
+            Token::Eof,
+        ];
+        assert_eq!(lexer.as_slice(), expected);
+    }
+
+    fn lexer_with_incorrect_lexemes() {
+        assert!(Lexer::from_str("<<-ab").is_err());
+        assert!(Lexer::from_str("((->>c").is_err());
+        assert!(Lexer::from_str("a\"c").is_err());
+
+        // Non ascii characters are not supported
+        assert!(Lexer::from_str("ñ").is_err());
     }
 }
