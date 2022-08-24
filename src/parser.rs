@@ -1,3 +1,5 @@
+use std::{collections::HashMap, rc::Rc};
+
 use crate::{
     error::BooleExprError,
     lexer::{Lexer, OperatorToken, Precedence, Token},
@@ -21,32 +23,32 @@ pub enum BooleanValue {
 }
 
 impl BooleanValue {
-    fn and(&self, other: &BooleanValue) -> BooleanValue {
-        if *self == BooleanValue::True && *other == BooleanValue::True {
+    fn and(&self, other: BooleanValue) -> BooleanValue {
+        if *self == BooleanValue::True && other == BooleanValue::True {
             BooleanValue::True
         } else {
             BooleanValue::False
         }
     }
 
-    fn or(&self, other: &BooleanValue) -> BooleanValue {
-        if *self == BooleanValue::True || *other == BooleanValue::True {
+    fn or(&self, other: BooleanValue) -> BooleanValue {
+        if *self == BooleanValue::True || other == BooleanValue::True {
             BooleanValue::True
         } else {
             BooleanValue::False
         }
     }
 
-    fn conditional(&self, other: &BooleanValue) -> BooleanValue {
-        if *self == BooleanValue::True && *other == BooleanValue::False {
+    fn conditional(&self, other: BooleanValue) -> BooleanValue {
+        if *self == BooleanValue::True && other == BooleanValue::False {
             BooleanValue::False
         } else {
             BooleanValue::True
         }
     }
 
-    fn biconditional(&self, other: &BooleanValue) -> BooleanValue {
-        if *self == *other {
+    fn biconditional(&self, other: BooleanValue) -> BooleanValue {
+        if *self == other {
             BooleanValue::True
         } else {
             BooleanValue::False
@@ -63,7 +65,7 @@ impl BooleanValue {
 }
 
 impl BinaryOperator {
-    fn apply(&self, first_op: &BooleanValue, second_op: &BooleanValue) -> BooleanValue {
+    fn apply(&self, first_op: BooleanValue, second_op: BooleanValue) -> BooleanValue {
         match self {
             BinaryOperator::And => first_op.and(second_op),
             BinaryOperator::Or => first_op.or(second_op),
@@ -75,13 +77,9 @@ impl BinaryOperator {
 
 #[derive(Debug, PartialEq, Eq)]
 enum ExpressionNode {
-    BinaryExpression {
-        lhs: Box<ExpressionNode>,
-        rhs: Box<ExpressionNode>,
-        op: BinaryOperator,
-    },
+    BinaryExpression(Box<ExpressionNode>, Box<ExpressionNode>, BinaryOperator),
     NotExpression(Box<ExpressionNode>),
-    Var(String),
+    Var(Rc<str>),
 }
 
 pub struct Parser {
@@ -101,7 +99,7 @@ impl Parser {
     pub fn parse(&mut self) -> Result<SyntaxTree, BooleExprError> {
         let expr = self.parse_expression(Precedence::min())?;
         if self.lexer.peek() == Token::Eof {
-            Ok(SyntaxTree { root: expr })
+            Ok(SyntaxTree::new(expr))
         } else {
             self.error("Missing opening parenthesis".to_string())
         }
@@ -148,7 +146,7 @@ impl Parser {
                     let rhs = self.parse_expression(op.precedende())?;
                     let op = self.parse_binary_operator(&op).unwrap();
 
-                    lhs = Box::new(ExpressionNode::BinaryExpression { lhs, rhs, op })
+                    lhs = Box::new(ExpressionNode::BinaryExpression(lhs, rhs, op))
                 }
                 Token::RParen | Token::Eof => break,
                 wrong_token => {
@@ -187,8 +185,92 @@ impl Parser {
 }
 
 #[derive(Debug)]
+struct Env {
+    map: HashMap<Rc<str>, usize>,
+}
+
+impl Env {
+    fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    fn from_node(root: &ExpressionNode) -> Self {
+        let mut env = Env::new();
+
+        let mut stack = vec![root];
+        while let Some(expr) = stack.pop() {
+            match expr {
+                ExpressionNode::BinaryExpression(lhs, rhs, _) => {
+                    stack.push(rhs);
+                    stack.push(lhs)
+                }
+                ExpressionNode::NotExpression(not_expr) => stack.push(not_expr),
+                ExpressionNode::Var(name) => env.add(name),
+            }
+        }
+
+        env
+    }
+
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    fn add(&mut self, name: &Rc<str>) {
+        let len = self.map.len();
+        self.map.entry(Rc::clone(name)).or_insert(len);
+    }
+
+    fn get_position(&self, name: &str) -> Option<usize> {
+        self.map.get(name).cloned()
+    }
+
+    fn names<'a>(&'a self) -> impl Iterator<Item = &'a str> {
+        self.map.keys().map(|name| name.as_ref())
+    }
+}
+
+fn interpret(node: &ExpressionNode, env: &Env, inputs: &[BooleanValue]) -> BooleanValue {
+    match node {
+        ExpressionNode::BinaryExpression(lhs, rhs, op) => {
+            let lhs = interpret(lhs, env, inputs);
+            let rhs = interpret(rhs, env, inputs);
+            op.apply(lhs, rhs)
+        },
+        ExpressionNode::NotExpression(not_expr) => {
+            let value = interpret(not_expr, env, inputs);
+            value.not()
+        },
+        ExpressionNode::Var(name) => {
+            let pos = env.get_position(name).unwrap();
+            inputs[pos]
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct SyntaxTree {
     root: Box<ExpressionNode>,
+    // Maps a variable to the position where it has been found first
+    // while parsing
+    env: Env,
+}
+
+impl SyntaxTree {
+    pub fn eval(&self, inputs: &[BooleanValue]) -> BooleanValue {
+        if inputs.len() == self.env.len() {
+            interpret(&self.root, &self.env, inputs)
+        } else {
+            panic!("The expression has {} variables but {} have been supplied", self.env.len(), inputs.len())
+        }
+    }
+
+    fn new(root: Box<ExpressionNode>) -> Self {
+        let env = Env::from_node(&root);
+        Self { root, env }
+    }
 }
 
 #[cfg(test)]
@@ -197,29 +279,27 @@ mod tests {
 
     #[test]
     fn parser_correctly_parses_expression() {
-        let tree = Parser::parse_from_str(
-            "a -> ~(c | b & d)"
-        ).unwrap();
-        
-        let expected = Box::new(ExpressionNode::BinaryExpression {
-            lhs: Box::new(ExpressionNode::Var("a".to_string())), 
-            rhs: Box::new(ExpressionNode::NotExpression(
-                Box::new(ExpressionNode::BinaryExpression { 
-                    lhs: Box::new(ExpressionNode::BinaryExpression { 
-                        lhs: Box::new(ExpressionNode::Var("c".to_string())), 
-                        rhs: Box::new(ExpressionNode::Var("b".to_string())),
-                        op: BinaryOperator::Or
-                    }), 
-                    rhs: Box::new(ExpressionNode::Var("d".to_string())), 
-                    op: BinaryOperator::And 
-                })
-            )),
-            op: BinaryOperator::Conditional 
-        });
+        let tree = Parser::parse_from_str("a -> ~(c | b & d)").unwrap();
+
+        let expected = Box::new(ExpressionNode::BinaryExpression(
+            Box::new(ExpressionNode::Var(Rc::from("a"))),
+            Box::new(ExpressionNode::NotExpression(Box::new(
+                ExpressionNode::BinaryExpression(
+                    Box::new(ExpressionNode::BinaryExpression(
+                        Box::new(ExpressionNode::Var(Rc::from("c"))),
+                        Box::new(ExpressionNode::Var(Rc::from("b"))),
+                        BinaryOperator::Or,
+                    )),
+                    Box::new(ExpressionNode::Var(Rc::from("d"))),
+                    BinaryOperator::And,
+                ),
+            ))),
+            BinaryOperator::Conditional,
+        ));
 
         assert_eq!(tree.root, expected);
     }
-    
+
     #[test]
     fn parser_detects_errors() {
         assert!(Parser::parse_from_str("").is_err());

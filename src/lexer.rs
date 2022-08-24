@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, rc::Rc};
 
 use crate::error::BooleExprError;
 
@@ -48,7 +48,7 @@ impl OperatorToken {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token {
     Operator(OperatorToken),
-    Identifier(String),
+    Identifier(Rc<str>),
     LParen,
     RParen,
     Eof,
@@ -58,7 +58,7 @@ impl Token {
     pub fn lexeme(&self) -> &str {
         match self {
             Token::Operator(op) => op.lexeme(),
-            Token::Identifier(name) => name.as_str(),
+            Token::Identifier(name) => name,
             Token::LParen => "(",
             Token::RParen => ")",
             Token::Eof => "EOF",
@@ -150,7 +150,7 @@ impl<'a> TokenGenerator<'a> {
             }
         }
         self.index += attr.len();
-        Ok(Token::Identifier(attr))
+        Ok(Token::Identifier(Rc::from(attr)))
     }
 
     fn error(&self, erronous_lexeme: &str) -> Result<Token, BooleExprError> {
@@ -218,10 +218,10 @@ mod tests {
     fn lexer_with_correct_lexemes() {
         let lexer = Lexer::from_str("a -><->cd&").unwrap();
         let expected = [
-            Token::Identifier("a".to_string()),
+            Token::Identifier(Rc::from("a")),
             Token::Operator(OperatorToken::Arrow),
             Token::Operator(OperatorToken::DoubleArrow),
-            Token::Identifier("cd".to_string()),
+            Token::Identifier(Rc::from("cd")),
             Token::Operator(OperatorToken::Ampersand),
             Token::Eof
         ];
@@ -229,9 +229,9 @@ mod tests {
 
         let lexer = Lexer::from_str("a|b~").unwrap();
         let expected = [
-            Token::Identifier("a".to_string()),
+            Token::Identifier(Rc::from("a")),
             Token::Operator(OperatorToken::Pipe),
-            Token::Identifier("b".to_string()),
+            Token::Identifier(Rc::from("b")),
             Token::Operator(OperatorToken::Tilde),
             Token::Eof
         ];
