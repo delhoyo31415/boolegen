@@ -123,7 +123,10 @@ impl<'a> TokenGenerator<'a> {
                 self.index += 2;
                 Ok(Token::Operator(OperatorToken::DoubleArrow))
             }
-            Some(other) => self.error(&other.iter().collect::<String>()),
+            Some(other) => {
+                self.index += 2;
+                self.error(&other.iter().collect::<String>())
+            },
             None => self.error("<"),
         }
     }
@@ -135,7 +138,10 @@ impl<'a> TokenGenerator<'a> {
                 self.index += 1;
                 Ok(Token::Operator(OperatorToken::Arrow))
             }
-            Some(chr) => self.error(&format!("-{chr}")),
+            Some(chr) => {
+                self.index += 1;
+                self.error(&format!("-{chr}"))
+            },
             None => self.error("-"),
         }
     }
@@ -204,8 +210,11 @@ impl Iterator for TokenGenerator<'_> {
             }
             '<' => Some(self.lex_double_arrow()),
             '-' => Some(self.lex_arrow()),
-            chr if chr.is_alphabetic() => Some(self.lex_identifier()),
-            other => Some(self.error(&other.to_string())),
+            chr if chr.is_ascii_alphabetic() => Some(self.lex_identifier()),
+            other => {
+                self.index += 1;
+                Some(self.error(&other.to_string()))
+            },
         }
     }
 }
@@ -244,12 +253,13 @@ mod tests {
         assert_eq!(lexer.as_slice(), expected);
     }
 
+    #[test]
     fn lexer_with_incorrect_lexemes() {
         assert!(Lexer::from_str("<<-ab").is_err());
         assert!(Lexer::from_str("((->>c").is_err());
         assert!(Lexer::from_str("a\"c").is_err());
 
-        // Non ascii characters are not supported
+        // // Non ascii characters are not supported
         assert!(Lexer::from_str("ñ").is_err());
     }
 }
