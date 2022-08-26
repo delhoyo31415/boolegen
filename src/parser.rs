@@ -42,13 +42,13 @@ impl Parser {
     }
 
     pub fn parse_from_str(s: &str) -> Result<SyntaxTree, BooleExprError> {
-        let lexer = Lexer::from_str(s)?;
+        let lexer = Lexer::from_str(s);
         Self::new(lexer).parse()
     }
 
     pub fn parse(&mut self) -> Result<SyntaxTree, BooleExprError> {
         let expr = self.parse_expression(Precedence::min())?;
-        if self.lexer.peek() == Token::Eof {
+        if self.lexer.peek()? == Token::Eof {
             Ok(SyntaxTree::new(expr))
         } else {
             self.error("Missing opening parenthesis".to_string())
@@ -56,7 +56,7 @@ impl Parser {
     }
 
     fn parse_prefix(&mut self) -> Result<Box<ExpressionNode>, BooleExprError> {
-        let lhs = match self.lexer.consume() {
+        let lhs = match self.lexer.consume()? {
             Token::Operator(OperatorToken::Tilde) => {
                 let expr = self.parse_expression(OperatorToken::Tilde.precedende())?;
                 Box::new(ExpressionNode::NotExpression(expr))
@@ -64,7 +64,7 @@ impl Parser {
             Token::Identifier(name) => Box::new(ExpressionNode::Var(name)),
             Token::LParen => {
                 let expr = self.parse_expression(Precedence::min())?;
-                if self.lexer.consume() != Token::RParen {
+                if self.lexer.consume()? != Token::RParen {
                     return self.error("Missing closing parenthesis".to_string());
                 }
                 expr
@@ -85,13 +85,13 @@ impl Parser {
         precedence: Precedence,
     ) -> Result<Box<ExpressionNode>, BooleExprError> {
         loop {
-            match self.lexer.peek() {
+            match self.lexer.peek()? {
                 Token::Operator(op) if op.is_binary() => {
                     // This implies that in case of a tie, the operator will be associated to the left
                     if precedence >= op.precedende() {
                         break;
                     }
-                    self.lexer.consume();
+                    self.lexer.consume()?;
 
                     let rhs = self.parse_expression(op.precedende())?;
                     let op = self.parse_binary_operator(&op).unwrap();

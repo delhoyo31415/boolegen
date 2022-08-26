@@ -1,4 +1,4 @@
-use std::{fmt::Display, rc::Rc};
+use std::{fmt::Display, iter::Peekable, rc::Rc};
 
 use crate::error::BooleExprError;
 
@@ -74,46 +74,40 @@ impl Display for Token {
 
 #[derive(Debug)]
 pub struct Lexer {
-    tokens: Vec<Token>,
-    index: usize,
+    tokens: Peekable<TokenGenerator>,
 }
 
 impl Lexer {
-    pub fn from_str(input: &str) -> Result<Self, BooleExprError> {
-        let chars: Vec<char> = input.chars().collect();
-        Self::from_chars(&chars)
+    pub fn from_str(input: &str) -> Self {
+        Self {
+            tokens: TokenGenerator::new(input.chars()).peekable(),
+        }
     }
 
-    pub fn from_chars(input: &[char]) -> Result<Self, BooleExprError> {
-        let tokens = TokenGenerator::new(input).collect::<Result<Vec<_>, BooleExprError>>()?;
-        Ok(Lexer { tokens, index: 0 })
+    pub fn consume(&mut self) -> Result<Token, BooleExprError> {
+        self.tokens.next().unwrap_or(Ok(Token::Eof))
     }
 
-    pub fn consume(&mut self) -> Token {
-        let token = self.peek();
-        self.index += 1;
-        token
-    }
-
-    pub fn peek(&self) -> Token {
-        self.tokens.get(self.index).cloned().unwrap_or(Token::Eof)
-    }
-
-    // A slice to the remaining tokens
-    pub fn as_slice(&self) -> &[Token] {
-        &self.tokens[self.index..]
+    pub fn peek(&mut self) -> Result<Token, BooleExprError> {
+        self.tokens.peek().cloned().unwrap_or(Ok(Token::Eof))
     }
 }
 
-#[derive(Debug)]
-pub struct TokenGenerator<'a> {
-    input: &'a [char],
+#[derive(Debug, Clone)]
+struct TokenGenerator {
+    input: Vec<char>,
     index: usize,
 }
 
-impl<'a> TokenGenerator<'a> {
-    fn new(input: &'a [char]) -> Self {
-        TokenGenerator { input, index: 0 }
+impl TokenGenerator {
+    fn new<I>(input: I) -> Self
+    where
+        I: IntoIterator<Item = char>,
+    {
+        Self {
+            input: input.into_iter().collect(),
+            index: 0,
+        }
     }
 
     fn lex_double_arrow(&mut self) -> Result<Token, BooleExprError> {
@@ -126,7 +120,7 @@ impl<'a> TokenGenerator<'a> {
             Some(other) => {
                 self.index += 2;
                 self.error(&other.iter().collect::<String>())
-            },
+            }
             None => self.error("<"),
         }
     }
@@ -141,7 +135,7 @@ impl<'a> TokenGenerator<'a> {
             Some(chr) => {
                 self.index += 1;
                 self.error(&format!("-{chr}"))
-            },
+            }
             None => self.error("-"),
         }
     }
@@ -174,7 +168,7 @@ impl<'a> TokenGenerator<'a> {
     }
 }
 
-impl Iterator for TokenGenerator<'_> {
+impl Iterator for TokenGenerator {
     type Item = Result<Token, BooleExprError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -214,7 +208,7 @@ impl Iterator for TokenGenerator<'_> {
             other => {
                 self.index += 1;
                 Some(self.error(&other.to_string()))
-            },
+            }
         }
     }
 }
@@ -223,43 +217,48 @@ impl Iterator for TokenGenerator<'_> {
 mod tests {
     use super::*;
 
+    fn vec_tokens(s: &str) -> Result<Vec<Token>, BooleExprError> {
+        Lexer::from_str(s).tokens.collect::<Result<Vec<_>, _>>()
+    }
+
     #[test]
     fn lexer_with_correct_lexemes() {
-        let lexer = Lexer::from_str("a -><->cd&").unwrap();
+        let tokens = vec_tokens("a -><->cd&").unwrap();
         let expected = [
             Token::Identifier(Rc::from("a")),
             Token::Operator(OperatorToken::Arrow),
             Token::Operator(OperatorToken::DoubleArrow),
             Token::Identifier(Rc::from("cd")),
             Token::Operator(OperatorToken::Ampersand),
-            Token::Eof
+            Token::Eof,
         ];
-        assert_eq!(lexer.as_slice(), expected);
+        assert_eq!(tokens, expected);
 
-        let lexer = Lexer::from_str("a|b~").unwrap();
+        let tokens = vec_tokens("a|b~").unwrap();
         let expected = [
             Token::Identifier(Rc::from("a")),
             Token::Operator(OperatorToken::Pipe),
             Token::Identifier(Rc::from("b")),
             Token::Operator(OperatorToken::Tilde),
-            Token::Eof
-        ];
-        assert_eq!(lexer.as_slice(), expected);
-
-        let lexer = Lexer::from_str("").unwrap();
-        let expected = [
             Token::Eof,
         ];
-        assert_eq!(lexer.as_slice(), expected);
+        assert_eq!(tokens, expected);
+
+        let tokens = vec_tokens("").unwrap();
+        let expected = [Token::Eof];
+        assert_eq!(tokens, expected);
     }
 
     #[test]
     fn lexer_with_incorrect_lexemes() {
-        assert!(Lexer::from_str("<<-ab").is_err());
-        assert!(Lexer::from_str("((->>c").is_err());
-        assert!(Lexer::from_str("a\"c").is_err());
+        assert!(vec_tokens("<<-ab").is_err());
+        assert!(vec_tokens("((->>c").is_err());
+        assert!(vec_tokens("a\"c").is_err());
 
-        // // Non ascii characters are not supported
-        assert!(Lexer::from_str("ñ").is_err());
+        // Non ascii characters are not supported
+        assert!(vec_tokens("ñ").is_err());
+
+        // Identifiers cannot start with digits
+        assert!(vec_tokens("1fi -> fa").is_err());
     }
 }
