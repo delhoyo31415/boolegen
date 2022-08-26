@@ -1,6 +1,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
+    boolean_value::BooleanValue,
     error::BooleExprError,
     lexer::{Lexer, OperatorToken, Precedence, Token},
 };
@@ -13,59 +14,8 @@ pub enum BinaryOperator {
     Biconditional,
 }
 
-// I create a new type instead of using bool because I don't
-// want the value returned by the operators to be used in the same places where bool is
-// allowed (i.e if statements)
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub enum BooleanValue {
-    True,
-    False,
-}
-
-impl BooleanValue {
-    fn and(&self, other: BooleanValue) -> BooleanValue {
-        if *self == BooleanValue::True && other == BooleanValue::True {
-            BooleanValue::True
-        } else {
-            BooleanValue::False
-        }
-    }
-
-    fn or(&self, other: BooleanValue) -> BooleanValue {
-        if *self == BooleanValue::True || other == BooleanValue::True {
-            BooleanValue::True
-        } else {
-            BooleanValue::False
-        }
-    }
-
-    fn conditional(&self, other: BooleanValue) -> BooleanValue {
-        if *self == BooleanValue::True && other == BooleanValue::False {
-            BooleanValue::False
-        } else {
-            BooleanValue::True
-        }
-    }
-
-    fn biconditional(&self, other: BooleanValue) -> BooleanValue {
-        if *self == other {
-            BooleanValue::True
-        } else {
-            BooleanValue::False
-        }
-    }
-
-    fn not(&self) -> BooleanValue {
-        if *self == BooleanValue::True {
-            BooleanValue::False
-        } else {
-            BooleanValue::True
-        }
-    }
-}
-
 impl BinaryOperator {
-    fn apply(&self, first_op: BooleanValue, second_op: BooleanValue) -> BooleanValue {
+    pub fn apply(&self, first_op: BooleanValue, second_op: BooleanValue) -> BooleanValue {
         match self {
             BinaryOperator::And => first_op.and(second_op),
             BinaryOperator::Or => first_op.or(second_op),
@@ -88,7 +38,7 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(lexer: Lexer) -> Self {
-        Parser { lexer }
+        Self { lexer }
     }
 
     pub fn parse_from_str(s: &str) -> Result<SyntaxTree, BooleExprError> {
@@ -185,12 +135,12 @@ impl Parser {
 }
 
 #[derive(Debug)]
-struct Env {
+pub struct Env {
     map: HashMap<Rc<str>, usize>,
 }
 
 impl Env {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             map: HashMap::new(),
         }
@@ -207,46 +157,28 @@ impl Env {
                     stack.push(lhs)
                 }
                 ExpressionNode::NotExpression(not_expr) => stack.push(not_expr),
-                ExpressionNode::Var(name) => env.add(name),
+                ExpressionNode::Var(name) => env.add(Rc::clone(name)),
             }
         }
 
         env
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.map.len()
     }
 
-    fn add(&mut self, name: &Rc<str>) {
+    pub fn add(&mut self, name: Rc<str>) {
         let len = self.map.len();
-        self.map.entry(Rc::clone(name)).or_insert(len);
+        self.map.entry(name).or_insert(len);
     }
 
-    fn get_position(&self, name: &str) -> Option<usize> {
+    pub fn get_position(&self, name: &str) -> Option<usize> {
         self.map.get(name).cloned()
     }
 
-    fn names<'a>(&'a self) -> impl Iterator<Item = &'a str> {
+    pub fn names<'a>(&'a self) -> impl Iterator<Item = &'a str> {
         self.map.keys().map(|name| name.as_ref())
-    }
-}
-
-fn interpret(node: &ExpressionNode, env: &Env, inputs: &[BooleanValue]) -> BooleanValue {
-    match node {
-        ExpressionNode::BinaryExpression(lhs, rhs, op) => {
-            let lhs = interpret(lhs, env, inputs);
-            let rhs = interpret(rhs, env, inputs);
-            op.apply(lhs, rhs)
-        },
-        ExpressionNode::NotExpression(not_expr) => {
-            let value = interpret(not_expr, env, inputs);
-            value.not()
-        },
-        ExpressionNode::Var(name) => {
-            let pos = env.get_position(name).unwrap();
-            inputs[pos]
-        }
     }
 }
 
@@ -263,13 +195,35 @@ impl SyntaxTree {
         if inputs.len() == self.env.len() {
             interpret(&self.root, &self.env, inputs)
         } else {
-            panic!("The expression has {} variables but {} have been supplied", self.env.len(), inputs.len())
+            panic!(
+                "The expression has {} variables but {} have been supplied",
+                self.env.len(),
+                inputs.len()
+            )
         }
     }
 
     fn new(root: Box<ExpressionNode>) -> Self {
         let env = Env::from_node(&root);
         Self { root, env }
+    }
+}
+
+fn interpret(node: &ExpressionNode, env: &Env, inputs: &[BooleanValue]) -> BooleanValue {
+    match node {
+        ExpressionNode::BinaryExpression(lhs, rhs, op) => {
+            let lhs = interpret(lhs, env, inputs);
+            let rhs = interpret(rhs, env, inputs);
+            op.apply(lhs, rhs)
+        }
+        ExpressionNode::NotExpression(not_expr) => {
+            let value = interpret(not_expr, env, inputs);
+            value.not()
+        }
+        ExpressionNode::Var(name) => {
+            let pos = env.get_position(name).unwrap();
+            inputs[pos]
+        }
     }
 }
 
