@@ -133,3 +133,28 @@ impl BooleanValueVariations {
             .all(|&bool_val| bool_val == BooleanValue::True)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn variation_equals(iter: &mut BooleanValueVariations, expected: &[BooleanValue]) {
+        assert_eq!(iter.next_variation().unwrap(), expected)
+    }
+
+    #[test]
+    fn boolean_value_variations_correctly_generated() {
+        let mut iter = BooleanValueVariations::new(3);
+
+        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::False, BooleanValue::False]);
+        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::False, BooleanValue::True]);
+        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::True, BooleanValue::False]);
+        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::True, BooleanValue::True]);
+        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::False, BooleanValue::False]);
+        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::False, BooleanValue::True]);
+        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::True, BooleanValue::False]);
+        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::True, BooleanValue::True]);
+        
+        assert_eq!(iter.next_variation(), None);
+    }
+}
