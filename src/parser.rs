@@ -203,6 +203,10 @@ impl SyntaxTree {
         }
     }
 
+    pub fn env(&self) -> &Env {
+        &self.env
+    }
+
     fn new(root: Box<ExpressionNode>) -> Self {
         let env = Env::from_node(&root);
         Self { root, env }

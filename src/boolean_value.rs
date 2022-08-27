@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 // I create a new type instead of using bool because I don't
 // want the value returned by the operators to be used in the same places where bool is
 // allowed (i.e if statements)
@@ -46,5 +48,88 @@ impl BooleanValue {
         } else {
             BooleanValue::True
         }
+    }
+}
+
+impl Display for BooleanValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BooleanValue::True => "True".fmt(f),
+            BooleanValue::False => "False".fmt(f),
+        }
+    }
+}
+
+// This is an example where GATs and a StreamingIterator or LendingIterator
+// would be really helpful
+pub struct BooleanValueVariations {
+    // The current variation
+    var: Vec<BooleanValue>,
+    // Auxilar variable to calculate the next variation
+    bin: Vec<usize>,
+}
+
+impl BooleanValueVariations {
+    pub fn new(len: usize) -> Self {
+        if len == 0 {
+            panic!("len cannot be 0");
+        }
+
+        let bits = usize::BITS as usize;
+        let entries = len / bits;
+        let entries = if len % bits == 0 {
+            entries
+        } else {
+            entries + 1
+        };
+
+        Self {
+            var: vec![BooleanValue::False; len],
+            bin: vec![0; entries],
+        }
+    }
+
+    pub fn next_variation<'a>(&'a mut self) -> Option<&'a [BooleanValue]> {
+        if self.has_finished() {
+            return None;
+        }
+
+        let mut idx = 0;
+        let mut current_bin = self.bin[idx];
+
+        for bool_value in self.var.iter_mut().rev() {
+            *bool_value = if current_bin & 1 == 1 {
+                BooleanValue::True
+            } else {
+                BooleanValue::False
+            };
+
+            current_bin >>= 1;
+            if current_bin == 0 {
+                idx += 1;
+                if idx < self.bin.len() {
+                    current_bin = self.bin[idx];
+                }
+            }
+        }
+        self.update_bin();
+
+        Some(&self.var)
+    }
+
+    fn update_bin(&mut self) {
+        for num in &mut self.bin {
+            let (new_num, overflowed) = num.overflowing_add(1);
+            *num = new_num;
+            if !overflowed {
+                break;
+            }
+        }
+    }
+
+    fn has_finished(&self) -> bool {
+        self.var
+            .iter()
+            .all(|&bool_val| bool_val == BooleanValue::True)
     }
 }
