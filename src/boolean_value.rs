@@ -67,10 +67,19 @@ pub struct BooleanValueVariations {
     var: Vec<BooleanValue>,
     // Auxilar variable to calculate the next variation
     bin: Vec<usize>,
+    bool_value_for_zero: BooleanValue,
 }
 
 impl BooleanValueVariations {
     pub fn new(len: usize) -> Self {
+        Self::with_starting_value(len, BooleanValue::False)
+    }
+
+    pub fn reversed(len: usize) -> Self {
+        Self::with_starting_value(len, BooleanValue::True)
+    }
+
+    fn with_starting_value(len: usize, bool_value: BooleanValue) -> Self {
         if len == 0 {
             panic!("len cannot be 0");
         }
@@ -84,8 +93,9 @@ impl BooleanValueVariations {
         };
 
         Self {
-            var: vec![BooleanValue::False; len],
+            var: vec![bool_value; len],
             bin: vec![0; entries],
+            bool_value_for_zero: bool_value,
         }
     }
 
@@ -99,9 +109,9 @@ impl BooleanValueVariations {
 
         for bool_value in self.var.iter_mut().rev() {
             *bool_value = if current_bin & 1 == 1 {
-                BooleanValue::True
+                self.bool_value_for_zero.not()
             } else {
-                BooleanValue::False
+                self.bool_value_for_zero
             };
 
             current_bin >>= 1;
@@ -130,7 +140,7 @@ impl BooleanValueVariations {
     fn has_finished(&self) -> bool {
         self.var
             .iter()
-            .all(|&bool_val| bool_val == BooleanValue::True)
+            .all(|&bool_val| bool_val == self.bool_value_for_zero.not())
     }
 }
 
@@ -146,15 +156,55 @@ mod tests {
     fn boolean_value_variations_correctly_generated() {
         let mut iter = BooleanValueVariations::new(3);
 
-        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::False, BooleanValue::False]);
-        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::False, BooleanValue::True]);
-        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::True, BooleanValue::False]);
-        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::True, BooleanValue::True]);
-        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::False, BooleanValue::False]);
-        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::False, BooleanValue::True]);
-        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::True, BooleanValue::False]);
-        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::True, BooleanValue::True]);
-        
+        variation_equals(
+            &mut iter,
+            &[
+                BooleanValue::False,
+                BooleanValue::False,
+                BooleanValue::False,
+            ],
+        );
+        variation_equals(
+            &mut iter,
+            &[BooleanValue::False, BooleanValue::False, BooleanValue::True],
+        );
+        variation_equals(
+            &mut iter,
+            &[BooleanValue::False, BooleanValue::True, BooleanValue::False],
+        );
+        variation_equals(
+            &mut iter,
+            &[BooleanValue::False, BooleanValue::True, BooleanValue::True],
+        );
+        variation_equals(
+            &mut iter,
+            &[BooleanValue::True, BooleanValue::False, BooleanValue::False],
+        );
+        variation_equals(
+            &mut iter,
+            &[BooleanValue::True, BooleanValue::False, BooleanValue::True],
+        );
+        variation_equals(
+            &mut iter,
+            &[BooleanValue::True, BooleanValue::True, BooleanValue::False],
+        );
+        variation_equals(
+            &mut iter,
+            &[BooleanValue::True, BooleanValue::True, BooleanValue::True],
+        );
+
+        assert_eq!(iter.next_variation(), None);
+    }
+
+    #[test]
+    fn boolean_value_variations_reversed() {
+        let mut iter = BooleanValueVariations::reversed(2);
+
+        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::True]);
+        variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::False]);
+        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::True]);
+        variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::False]);
+
         assert_eq!(iter.next_variation(), None);
     }
 }
