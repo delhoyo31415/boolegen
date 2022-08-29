@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, rc::Rc, str::FromStr};
 
 use crate::{
     boolean_value::BooleanValue,
@@ -39,11 +39,6 @@ pub struct Parser {
 impl Parser {
     pub fn new(lexer: Lexer) -> Self {
         Self { lexer }
-    }
-
-    pub fn parse_from_str(s: &str) -> Result<SyntaxTree, BooleExprError> {
-        let lexer = Lexer::from_str(s);
-        Self::new(lexer).parse()
     }
 
     pub fn parse(&mut self) -> Result<SyntaxTree, BooleExprError> {
@@ -225,6 +220,15 @@ impl SyntaxTree {
     }
 }
 
+impl FromStr for SyntaxTree {
+    type Err = BooleExprError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let lexer = Lexer::new(s);
+        Parser::new(lexer).parse()
+    }
+}
+
 fn interpret(node: &ExpressionNode, env: &Env, inputs: &[BooleanValue]) -> BooleanValue {
     match node {
         ExpressionNode::BinaryExpression(lhs, rhs, op) => {
@@ -249,7 +253,7 @@ mod tests {
 
     #[test]
     fn parser_correctly_parses_expression() {
-        let tree = Parser::parse_from_str("a -> ~(c | b & d)").unwrap();
+        let tree = "a -> ~(c | b & d)".parse::<SyntaxTree>();
 
         let expected = Box::new(ExpressionNode::BinaryExpression(
             Box::new(ExpressionNode::Var(Rc::from("a"))),
@@ -267,22 +271,22 @@ mod tests {
             BinaryOperator::Conditional,
         ));
 
-        assert_eq!(tree.root, expected);
+        assert_eq!(tree.unwrap().root, expected);
     }
 
     #[test]
     fn parser_detects_errors() {
-        assert!(Parser::parse_from_str("").is_err());
-        assert!(Parser::parse_from_str("(a").is_err());
-        assert!(Parser::parse_from_str("a) -> c").is_err());
-        assert!(Parser::parse_from_str("a~b").is_err());
-        assert!(Parser::parse_from_str("a b <-> d").is_err());
-        assert!(Parser::parse_from_str("a & ()").is_err());
+        assert!("".parse::<SyntaxTree>().is_err());
+        assert!("(a".parse::<SyntaxTree>().is_err());
+        assert!("a) -> c".parse::<SyntaxTree>().is_err());
+        assert!("a~b".parse::<SyntaxTree>().is_err());
+        assert!("a b <-> d".parse::<SyntaxTree>().is_err());
+        assert!("a & ()".parse::<SyntaxTree>().is_err());
     }
 
     #[test]
     fn test_env() {
-        let tree = Parser::parse_from_str("a -> b & c & a & b ").unwrap();
+        let tree = SyntaxTree::from_str("a -> b & c & a & b ").unwrap();
         let env = tree.env();
 
         assert_eq!(env.var_count(), 3);

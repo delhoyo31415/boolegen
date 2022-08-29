@@ -78,7 +78,7 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn from_str(input: &str) -> Self {
+    pub fn new(input: &str) -> Self {
         Self {
             tokens: TokenGenerator::new(input.chars()).peekable(),
         }
@@ -221,7 +221,7 @@ mod tests {
     use super::*;
 
     fn vec_tokens(s: &str) -> Result<Vec<Token>, BooleExprError> {
-        Lexer::from_str(s).tokens.collect::<Result<Vec<_>, _>>()
+        Lexer::new(s).tokens.collect::<Result<Vec<_>, _>>()
     }
 
     #[test]
