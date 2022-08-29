@@ -181,7 +181,7 @@ impl Iterator for TokenGenerator {
 
         self.ignore_whitespace();
 
-        match self.input[self.index] {
+        match self.input.get(self.index)? {
             '(' => {
                 self.index += 1;
                 Some(Ok(Token::LParen))
@@ -251,6 +251,10 @@ mod tests {
 
     #[test]
     fn lexer_with_incorrect_lexemes() {
+        assert!(vec_tokens(" a ").is_ok());
+        assert!(vec_tokens(" a").is_ok());
+        assert!(vec_tokens("a ").is_ok());
+
         assert!(vec_tokens("<<-ab").is_err());
         assert!(vec_tokens("((->>c").is_err());
         assert!(vec_tokens("a\"c").is_err());
