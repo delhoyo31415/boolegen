@@ -62,7 +62,8 @@ impl Display for BooleanValue {
 
 // This is an example where GATs and a StreamingIterator or LendingIterator
 // would be really helpful
-pub struct BooleanValueVariations {
+#[derive(Debug, Clone)]
+pub struct BooleanVariations {
     // The current variation
     var: Vec<BooleanValue>,
     // Auxilar variable to calculate the next variation
@@ -70,7 +71,7 @@ pub struct BooleanValueVariations {
     bool_value_for_zero: BooleanValue,
 }
 
-impl BooleanValueVariations {
+impl BooleanVariations {
     pub fn new(len: usize) -> Self {
         Self::with_starting_value(len, BooleanValue::False)
     }
@@ -137,10 +138,60 @@ impl BooleanValueVariations {
         }
     }
 
-    fn has_finished(&self) -> bool {
+    pub fn has_finished(&self) -> bool {
         self.var
             .iter()
             .all(|&bool_val| bool_val == self.bool_value_for_zero.not())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ColumnsBooleanVariations {
+    column: Vec<BooleanValue>,
+    step: usize,
+    starting_value: BooleanValue,
+}
+
+impl ColumnsBooleanVariations {
+    pub fn new(len: u8) -> Self {
+        Self::with_starting_value(len, BooleanValue::False)
+    }
+
+    pub fn reversed(len: u8) -> Self {
+        Self::with_starting_value(len, BooleanValue::True)
+    }
+
+    pub fn next_variation<'a>(&'a mut self) -> Option<&'a [BooleanValue]> {
+        if self.has_finished() {
+            return None;
+        }
+
+        let mut current_value = self.starting_value;
+        for (idx, bool_value) in self.column.iter_mut().enumerate() {
+            if idx % self.step == 0 {
+                current_value = current_value.not();
+            }
+            *bool_value = current_value;
+        }
+
+        self.step >>= 1;
+
+        Some(&self.column)
+    }
+
+    pub fn has_finished(&self) -> bool {
+        self.step == 0
+    }
+
+    fn with_starting_value(len: u8, starting_value: BooleanValue) -> Self {
+        // TODO: The memory consumption for values of len of at least 30 is HUGE (at least 1GiB)
+        // Think if there is a better way (I doubt because of the exponential nature of this calculation)
+        // Maybe the row values can be output from an iterator
+        Self {
+            column: vec![BooleanValue::False; 1 << len],
+            step: 1 << (len - 1),
+            starting_value: starting_value.not(),
+        }
     }
 }
 
@@ -148,13 +199,13 @@ impl BooleanValueVariations {
 mod tests {
     use super::*;
 
-    fn variation_equals(iter: &mut BooleanValueVariations, expected: &[BooleanValue]) {
+    fn variation_equals(iter: &mut BooleanVariations, expected: &[BooleanValue]) {
         assert_eq!(iter.next_variation().unwrap(), expected)
     }
 
     #[test]
     fn boolean_value_variations_correctly_generated() {
-        let mut iter = BooleanValueVariations::new(3);
+        let mut iter = BooleanVariations::new(3);
 
         variation_equals(
             &mut iter,
@@ -198,7 +249,7 @@ mod tests {
 
     #[test]
     fn boolean_value_variations_reversed() {
-        let mut iter = BooleanValueVariations::reversed(2);
+        let mut iter = BooleanVariations::reversed(2);
 
         variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::True]);
         variation_equals(&mut iter, &[BooleanValue::True, BooleanValue::False]);
@@ -206,5 +257,55 @@ mod tests {
         variation_equals(&mut iter, &[BooleanValue::False, BooleanValue::False]);
 
         assert_eq!(iter.next_variation(), None);
+    }
+
+    #[test]
+    fn column_boolean_value_variations_correctly_generated() {
+        let mut iter = ColumnsBooleanVariations::new(2);
+
+        assert_eq!(
+            iter.next_variation().unwrap(),
+            &[
+                BooleanValue::False,
+                BooleanValue::False,
+                BooleanValue::True,
+                BooleanValue::True
+            ]
+        );
+        assert_eq!(
+            iter.next_variation().unwrap(),
+            &[
+                BooleanValue::False,
+                BooleanValue::True,
+                BooleanValue::False,
+                BooleanValue::True
+            ]
+        );
+
+        assert_eq!(iter.next_variation(), None);
+    }
+
+    #[test]
+    fn column_boolean_value_variations_reversed() {
+        let mut iter = ColumnsBooleanVariations::reversed(2);
+
+        assert_eq!(
+            iter.next_variation().unwrap(),
+            &[
+                BooleanValue::True,
+                BooleanValue::True,
+                BooleanValue::False,
+                BooleanValue::False
+            ]
+        );
+        assert_eq!(
+            iter.next_variation().unwrap(),
+            &[
+                BooleanValue::True,
+                BooleanValue::False,
+                BooleanValue::True,
+                BooleanValue::False
+            ]
+        );
     }
 }
