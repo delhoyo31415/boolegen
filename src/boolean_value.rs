@@ -100,7 +100,7 @@ impl BooleanVariations {
         }
     }
 
-    pub fn next_variation<'a>(&'a mut self) -> Option<&'a [BooleanValue]> {
+    pub fn next_variation(&mut self) -> Option<&[BooleanValue]> {
         if self.has_finished() {
             return None;
         }
@@ -161,7 +161,7 @@ impl ColumnsBooleanVariations {
         Self::with_starting_value(len, BooleanValue::True)
     }
 
-    pub fn next_variation<'a>(&'a mut self) -> Option<&'a [BooleanValue]> {
+    pub fn next_variation(&mut self) -> Option<&[BooleanValue]> {
         if self.has_finished() {
             return None;
         }

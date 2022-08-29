@@ -114,8 +114,7 @@ impl Parser {
         precedence: Precedence,
     ) -> Result<Box<ExpressionNode>, BooleExprError> {
         let lhs = self.parse_prefix()?;
-        let expr = self.parse_infix(lhs, precedence);
-        expr
+        self.parse_infix(lhs, precedence)
     }
 
     // If op is not a binary operator, return None
@@ -168,7 +167,7 @@ impl Env {
         env
     }
 
-    pub fn len(&self) -> usize {
+    pub fn var_count(&self) -> usize {
         self.names.len()
     }
 
@@ -186,11 +185,11 @@ impl Env {
         self.map.get(name).cloned()
     }
 
-    pub fn get_name<'a>(&'a self, position: usize) -> Option<&'a str> {
+    pub fn get_name(&self, position: usize) -> Option<&str> {
         self.names.get(position).map(|name| name.as_ref())
     }
 
-    pub fn names_iter<'a>(&'a self) -> impl Iterator<Item = &'a str> {
+    pub fn names_iter(&self) -> impl Iterator<Item = &str> {
         self.names.iter().map(|name| name.as_ref())
     }
 }
@@ -205,12 +204,12 @@ pub struct SyntaxTree {
 
 impl SyntaxTree {
     pub fn eval(&self, inputs: &[BooleanValue]) -> BooleanValue {
-        if inputs.len() == self.env.len() {
+        if inputs.len() == self.env.var_count() {
             interpret(&self.root, &self.env, inputs)
         } else {
             panic!(
                 "The expression has {} variables but {} have been supplied",
-                self.env.len(),
+                self.env.var_count(),
                 inputs.len()
             )
         }
@@ -286,7 +285,7 @@ mod tests {
         let tree = Parser::parse_from_str("a -> b & c & a & b ").unwrap();
         let env = tree.env();
 
-        assert_eq!(env.len(), 3);
+        assert_eq!(env.var_count(), 3);
         assert_eq!(env.get_name(1).unwrap(), "b");
         assert_eq!(env.names_iter().collect::<Vec<_>>(), vec!["a", "b", "c"]);
     }

@@ -58,8 +58,8 @@ impl<'a> LplBooleGenerator<'a> {
     }
 
     fn write_generated_columns(&mut self) {
-        let len = self.syntax_tree.env().len();
-        let mut bool_iter = ColumnsBooleanVariations::reversed(len);
+        let count = self.syntax_tree.env().var_count();
+        let mut bool_iter = ColumnsBooleanVariations::reversed(count);
 
         for (idx, name) in self.syntax_tree.env().names_iter().enumerate() {
             let values = bool_iter.next_variation().unwrap();
@@ -67,7 +67,7 @@ impl<'a> LplBooleGenerator<'a> {
             // TODO: ensure the name of the variable is allowed by LPL Boole
             self.write_generated_column(values, name);
 
-            if idx != len - 1 {
+            if idx != count - 1 {
                 self.output += ",";
             }
         }
