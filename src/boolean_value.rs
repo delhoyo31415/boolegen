@@ -153,11 +153,11 @@ pub struct ColumnsBooleanVariations {
 }
 
 impl ColumnsBooleanVariations {
-    pub fn new(len: u8) -> Self {
+    pub fn new(len: usize) -> Self {
         Self::with_starting_value(len, BooleanValue::False)
     }
 
-    pub fn reversed(len: u8) -> Self {
+    pub fn reversed(len: usize) -> Self {
         Self::with_starting_value(len, BooleanValue::True)
     }
 
@@ -183,7 +183,7 @@ impl ColumnsBooleanVariations {
         self.step == 0
     }
 
-    fn with_starting_value(len: u8, starting_value: BooleanValue) -> Self {
+    fn with_starting_value(len: usize, starting_value: BooleanValue) -> Self {
         // TODO: The memory consumption for values of len of at least 30 is HUGE (at least 1GiB)
         // Think if there is a better way (I doubt because of the exponential nature of this calculation)
         // Maybe the row values can be output from an iterator
