@@ -136,12 +136,16 @@ impl Parser {
 
 #[derive(Debug)]
 pub struct Env {
+    // Map the position to the string
+    names: Vec<Rc<str>>,
+    // Maps a name to the first position where string has been found
     map: HashMap<Rc<str>, usize>,
 }
 
 impl Env {
     pub fn new() -> Self {
         Self {
+            names: Vec::new(),
             map: HashMap::new(),
         }
     }
@@ -165,20 +169,29 @@ impl Env {
     }
 
     pub fn len(&self) -> usize {
-        self.map.len()
+        self.names.len()
     }
 
     pub fn add(&mut self, name: Rc<str>) {
         let len = self.map.len();
-        self.map.entry(name).or_insert(len);
+
+        if self.map.get(&name).is_none() {
+            self.map.insert(Rc::clone(&name), len);
+            self.names.push(name);
+        }
     }
 
+    // Returns the position of a given name, starting at 0
     pub fn get_position(&self, name: &str) -> Option<usize> {
         self.map.get(name).cloned()
     }
 
-    pub fn names<'a>(&'a self) -> impl Iterator<Item = &'a str> {
-        self.map.keys().map(|name| name.as_ref())
+    pub fn get_name<'a>(&'a self, position: usize) -> Option<&'a str> {
+        self.names.get(position).map(|name| name.as_ref())
+    }
+
+    pub fn names_iter<'a>(&'a self) -> impl Iterator<Item = &'a str> {
+        self.names.iter().map(|name| name.as_ref())
     }
 }
 
@@ -266,5 +279,15 @@ mod tests {
         assert!(Parser::parse_from_str("a~b").is_err());
         assert!(Parser::parse_from_str("a b <-> d").is_err());
         assert!(Parser::parse_from_str("a & ()").is_err());
+    }
+
+    #[test]
+    fn test_env() {
+        let tree = Parser::parse_from_str("a -> b & c & a & b ").unwrap();
+        let env = tree.env();
+
+        assert_eq!(env.len(), 3);
+        assert_eq!(env.get_name(1).unwrap(), "b");
+        assert_eq!(env.names_iter().collect::<Vec<_>>(), vec!["a", "b", "c"]);
     }
 }
