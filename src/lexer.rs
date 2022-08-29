@@ -1,4 +1,4 @@
-use std::{fmt::Display, iter::Peekable, rc::Rc};
+use std::{cmp::Ordering, fmt::Display, iter::Peekable, rc::Rc};
 
 use crate::error::BooleExprError;
 
@@ -166,21 +166,9 @@ impl TokenGenerator {
             }
         }
     }
-}
 
-impl Iterator for TokenGenerator {
-    type Item = Result<Token, BooleExprError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.input.len() {
-            self.index += 1;
-            return Some(Ok(Token::Eof));
-        } else if self.index > self.input.len() {
-            return None;
-        }
-
+    fn lex_next(&mut self) -> Option<<Self as Iterator>::Item> {
         self.ignore_whitespace();
-
         match self.input.get(self.index)? {
             '(' => {
                 self.index += 1;
@@ -209,6 +197,21 @@ impl Iterator for TokenGenerator {
                 self.index += 1;
                 Some(self.error(&other.to_string()))
             }
+        }
+    }
+}
+
+impl Iterator for TokenGenerator {
+    type Item = Result<Token, BooleExprError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.index.cmp(&self.input.len()) {
+            Ordering::Less => self.lex_next(),
+            Ordering::Equal => {
+                self.index += 1;
+                Some(Ok(Token::Eof))
+            }
+            Ordering::Greater => None,
         }
     }
 }
