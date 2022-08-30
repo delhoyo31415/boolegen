@@ -5,7 +5,6 @@ use crate::{
     parser::SyntaxTree,
 };
 
-
 pub struct LplBooleGenerator<'a> {
     syntax_tree: &'a SyntaxTree,
     output: String,
@@ -46,9 +45,11 @@ impl<'a> LplBooleGenerator<'a> {
     fn write_generated_column(&mut self, values: &[BooleanValue], name: &str) {
         self.output += "openproof.boole.BooleExpressionData=openproof.boole.BooleExpressionData{";
         self.output += "_fLabelNum=0;_fLabelText=\"\";_fByBoole=true;";
-        self.output += "_fTruthColumnExist:1[openproof.boole.TruthColumnData=openproof.boole.TruthColumnData{";
+        self.output +=
+            "_fTruthColumnExist:1[openproof.boole.TruthColumnData=openproof.boole.TruthColumnData{";
         self.output += "v=\"";
-        self.output.extend(values.iter().map(BooleanValue::lpl_boole_encoded));
+        self.output
+            .extend(values.iter().map(BooleanValue::lpl_boole_encoded));
         self.output += "\\000\";_fCharIndex=0;_fByBoole=true;";
         self.output += "}"; // TruthColumnData
         self.output += "]_fExpression="; // TruthColumnExist
@@ -74,7 +75,15 @@ impl<'a> LplBooleGenerator<'a> {
     }
 
     fn write_checksums(&mut self) {
-        todo!()
+        let checksum = simple_checksum(self.output.bytes()).to_string();
+        self.output += "c=";
+        self.output += &checksum;
+        self.output += ";\r";
+
+        let checksum = circle_shift_checksum(self.output.bytes()).to_string();
+        self.output += "s=";
+        self.output += &checksum;
+        self.output += ";";
     }
 
     pub fn generate(&mut self) {
@@ -93,6 +102,7 @@ impl<'a> LplBooleGenerator<'a> {
         self.output += "}"; // _fAssessmentData=openproof.boole.entities.AssessmentData{
         self.output += "}"; // p=openproof.boole.Boole{
         self.output += "}"; //=openproof.zen.Openproof
+        self.write_checksums();
     }
 
     pub fn into_string(mut self) -> String {
@@ -101,12 +111,43 @@ impl<'a> LplBooleGenerator<'a> {
     }
 }
 
+pub fn simple_checksum<I>(input: I) -> u64
+where
+    I: IntoIterator<Item = u8>,
+{
+    input
+        .into_iter()
+        .filter(|&byte| byte != 0x0D && byte != 0x0A)
+        .map(|byte| byte as u64)
+        .sum()
+}
+
+pub fn circle_shift_checksum<I>(input: I) -> u64
+where
+    I: IntoIterator<Item = u8>,
+{
+    let mut checksum = 0;
+    let mut shifter = 0;
+
+    for byte in input {
+        let byte = byte as u64;
+
+        if byte == 0x0D || byte == 0x0A {
+            continue;
+        }
+        checksum += (byte << shifter ^ byte >> 7 & 0x1 ^ 0xFFFFFFFF) & 0xFF;
+        checksum &= 0xFFFFFFF;
+        shifter = (shifter + 1) % 8;
+    }
+
+    checksum
+}
 
 impl BooleanValue {
     fn lpl_boole_encoded(&self) -> &'static str {
         match self {
             BooleanValue::True => "T",
-            BooleanValue::False => "F"
+            BooleanValue::False => "F",
         }
     }
 }
