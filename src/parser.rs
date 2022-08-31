@@ -26,10 +26,44 @@ impl BinaryOperator {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum ExpressionNode {
+pub enum ExpressionNode {
     BinaryExpression(Box<ExpressionNode>, Box<ExpressionNode>, BinaryOperator),
     NotExpression(Box<ExpressionNode>),
     Var(Rc<str>),
+}
+
+impl ExpressionNode {
+    pub fn is_var(&self) -> bool {
+        matches!(self, ExpressionNode::Var(_))
+    }
+
+    pub fn preorder_traversal(&self) -> impl Iterator<Item = &Self> {
+        PreorderTraversal { stack: vec![self] }
+    }
+
+    pub fn degree(&self) -> usize {
+        self.preorder_traversal()
+            .filter(|&node| !node.is_var())
+            .count()
+    }
+
+    pub fn eval(&self, env: &Env, inputs: &[BooleanValue]) -> BooleanValue {
+        match self {
+            ExpressionNode::NotExpression(not_expr) => not_expr.eval(env, inputs).not(),
+            ExpressionNode::BinaryExpression(lhs, rhs, op) => {
+                let lhs = lhs.eval(env, inputs);
+                let rhs = rhs.eval(env, inputs);
+                op.apply(lhs, rhs)
+            }
+            ExpressionNode::Var(name) => {
+                let pos = env.get_position(name).expect("Name not found in given env");
+                inputs
+                    .get(pos)
+                    .cloned()
+                    .expect("Boolean value not supplied")
+            }
+        }
+    }
 }
 
 pub struct Parser {
@@ -138,24 +172,15 @@ pub struct Env {
 
 impl Env {
     pub fn new() -> Self {
-        Self {
-            names: Vec::new(),
-            map: HashMap::new(),
-        }
+        Default::default()
     }
 
-    fn from_node(root: &ExpressionNode) -> Self {
+    fn from_node(node: &ExpressionNode) -> Self {
         let mut env = Env::new();
 
-        let mut stack = vec![root];
-        while let Some(expr) = stack.pop() {
-            match expr {
-                ExpressionNode::BinaryExpression(lhs, rhs, _) => {
-                    stack.push(rhs);
-                    stack.push(lhs)
-                }
-                ExpressionNode::NotExpression(not_expr) => stack.push(not_expr),
-                ExpressionNode::Var(name) => env.add(Rc::clone(name)),
+        for node in node.preorder_traversal() {
+            if let ExpressionNode::Var(name) = node {
+                env.add(Rc::clone(name))
             }
         }
 
@@ -189,6 +214,15 @@ impl Env {
     }
 }
 
+impl Default for Env {
+    fn default() -> Self {
+        Self {
+            names: Vec::new(),
+            map: HashMap::new(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SyntaxTree {
     root: Box<ExpressionNode>,
@@ -200,7 +234,7 @@ pub struct SyntaxTree {
 impl SyntaxTree {
     pub fn eval(&self, inputs: &[BooleanValue]) -> BooleanValue {
         if inputs.len() == self.env.var_count() {
-            interpret(&self.root, &self.env, inputs)
+            self.root.eval(&self.env, inputs)
         } else {
             panic!(
                 "The expression has {} variables but {} have been supplied",
@@ -208,6 +242,14 @@ impl SyntaxTree {
                 inputs.len()
             )
         }
+    }
+
+    pub fn degree(&self) -> usize {
+        self.root.degree()
+    }
+
+    pub fn preorder_traversal(&self) -> impl Iterator<Item = &ExpressionNode> {
+        self.root.preorder_traversal()
     }
 
     pub fn env(&self) -> &Env {
@@ -220,30 +262,35 @@ impl SyntaxTree {
     }
 }
 
+struct PreorderTraversal<'a> {
+    stack: Vec<&'a ExpressionNode>,
+}
+
+impl<'a> Iterator for PreorderTraversal<'a> {
+    type Item = &'a ExpressionNode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.stack.pop()?;
+
+        match node {
+            ExpressionNode::BinaryExpression(lhs, rhs, _) => {
+                self.stack.push(rhs);
+                self.stack.push(lhs);
+            }
+            ExpressionNode::NotExpression(not_expr) => self.stack.push(not_expr),
+            ExpressionNode::Var(_) => (),
+        }
+
+        Some(node)
+    }
+}
+
 impl FromStr for SyntaxTree {
     type Err = BooleExprError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lexer = Lexer::new(s);
         Parser::new(lexer).parse()
-    }
-}
-
-fn interpret(node: &ExpressionNode, env: &Env, inputs: &[BooleanValue]) -> BooleanValue {
-    match node {
-        ExpressionNode::BinaryExpression(lhs, rhs, op) => {
-            let lhs = interpret(lhs, env, inputs);
-            let rhs = interpret(rhs, env, inputs);
-            op.apply(lhs, rhs)
-        }
-        ExpressionNode::NotExpression(not_expr) => {
-            let value = interpret(not_expr, env, inputs);
-            value.not()
-        }
-        ExpressionNode::Var(name) => {
-            let pos = env.get_position(name).unwrap();
-            inputs[pos]
-        }
     }
 }
 
@@ -292,5 +339,28 @@ mod tests {
         assert_eq!(env.var_count(), 3);
         assert_eq!(env.get_name(1).unwrap(), "b");
         assert_eq!(env.names_iter().collect::<Vec<_>>(), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn syntax_tree_evaluates_expression_correctly() {
+        // Notice this a tautology, so for any value a,b the expression is always true
+        let tree: SyntaxTree = "(a -> b) <-> (~a | b)".parse().unwrap();
+
+        assert_eq!(
+            tree.eval(&[BooleanValue::False, BooleanValue::False]),
+            BooleanValue::True
+        );
+        assert_eq!(
+            tree.eval(&[BooleanValue::False, BooleanValue::True]),
+            BooleanValue::True
+        );
+        assert_eq!(
+            tree.eval(&[BooleanValue::True, BooleanValue::False]),
+            BooleanValue::True
+        );
+        assert_eq!(
+            tree.eval(&[BooleanValue::True, BooleanValue::True]),
+            BooleanValue::True
+        );
     }
 }
