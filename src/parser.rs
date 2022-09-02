@@ -47,11 +47,20 @@ impl ExpressionNode {
             .count()
     }
 
+    pub fn transform_equivalent(&mut self) {
+        // the transformation only applies to binary operators
+        if let ExpressionNode::BinaryExpression(lhs, rhs, _) = self {
+            lhs.transform_equivalent();
+            rhs.transform_equivalent();
+            self.transform_current_equivalent();
+        }
+    }
+
     // Use the associative property of AND and OR binary operators
     // to reestructure this node so that when printed, it uses less parenthesis
     // What is actually being implemented is a left rotation
     // It is guaranteed that the result of eval will be the same, but no the structure
-    pub fn transform_equivalent(&mut self) {
+    fn transform_current_equivalent(&mut self) {
         if let ExpressionNode::BinaryExpression(lhs, rhs, op) = self {
             if let ExpressionNode::BinaryExpression(rhs_lhs, rhs_rhs, rhs_op) = &mut **rhs {
                 if op == rhs_op {
@@ -270,6 +279,10 @@ impl SyntaxTree {
         self.root.preorder_traversal()
     }
 
+    pub fn transform_equivalent(&mut self) {
+        self.root.transform_equivalent();
+    }
+
     pub fn root(&self) -> &ExpressionNode {
         &self.root
     }
@@ -387,29 +400,15 @@ mod tests {
     }
 
     #[test]
-    fn node_is_transformed_correctly() {
-        let mut node = ExpressionNode::BinaryExpression(
-            Box::new(ExpressionNode::Var(Rc::from("a"))),
-            Box::new(ExpressionNode::BinaryExpression(
-                Box::new(ExpressionNode::Var(Rc::from("b"))),
-                Box::new(ExpressionNode::Var(Rc::from("c"))),
-                BinaryOperator::Or,
-            )),
-            BinaryOperator::Or,
-        );
+    fn tree_correctly_transformed() {
+        let mut tree: SyntaxTree = "a | (b | c)".parse().unwrap();
+        tree.transform_equivalent();
+        let expected: SyntaxTree = "a | b | c".parse().unwrap();
+        assert_eq!(tree.root(), expected.root());
 
-        let expected = ExpressionNode::BinaryExpression(
-            Box::new(ExpressionNode::BinaryExpression(
-                Box::new(ExpressionNode::Var(Rc::from("a"))),
-                Box::new(ExpressionNode::Var(Rc::from("b"))),
-                BinaryOperator::Or,
-            )),
-            Box::new(ExpressionNode::Var(Rc::from("c"))),
-            BinaryOperator::Or,
-        );
-
-        node.transform_equivalent();
-
-        assert_eq!(node, expected);
+        let mut tree: SyntaxTree = "a -> ((b -> c) | ((d -> c) | (a & d)))".parse().unwrap();
+        tree.transform_equivalent();
+        let expected: SyntaxTree = "a -> ((b -> c) | (d -> c) | (a & d))".parse().unwrap();
+        assert_eq!(tree.root(), expected.root());
     }
 }
