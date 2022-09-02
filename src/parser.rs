@@ -241,7 +241,6 @@ impl Env {
     }
 }
 
-
 #[derive(Debug)]
 pub struct SyntaxTree {
     root: Box<ExpressionNode>,

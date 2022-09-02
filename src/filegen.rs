@@ -116,9 +116,13 @@ impl<'a> LplBooleGenerator<'a> {
         self.write_answer_column(self.syntax_tree.lpl_formatted().as_str(), &cols);
     }
 
-    fn write_truth_table_row_status(&mut self, num: usize) {
+    fn write_truth_table_row_status(&mut self, is_corrected: bool, num: usize) {
+        let c_value = u32::from(is_corrected).to_string();
+
         self.output += "openproof.boole.status.TruthTableRowStatus=openproof.boole.status.TruthTableRowStatus{";
-        self.output += "c=1;s=\"\";l=\"\";d@k=\"\";t=false;r=";
+        self.output += "c=";
+        self.output += &c_value;
+        self.output += ";s=\"\";l=\"\";d@k=\"\";t=false;r=";
         self.output += num.to_string().as_str();
         self.output += ";}";
     }
@@ -142,12 +146,11 @@ impl<'a> LplBooleGenerator<'a> {
 
     fn write_status_column(&mut self, num_columns: usize) {
         self.output += "_fStatusColumn(";
-        for num in 0..=num_columns {
-            self.write_truth_table_row_status(num);
-            if num != num_columns {
-                self.output += ",";
-            }
+        for num in 0..num_columns {
+            self.write_truth_table_row_status(true, num);
+            self.output += ",";
         }
+        self.write_truth_table_row_status(false, num_columns);
         self.output += ")o()";
     }
 
