@@ -267,7 +267,7 @@ impl<'a> LplIntermediateEval<'a> {
 
 impl ExpressionNode {
     // TODO: think on a way which does not involve a heap allocations per stack frame
-    pub fn lpl_formatted(&self) -> String {
+    fn lpl_formatted(&self) -> String {
         match self {
             ExpressionNode::BinaryExpression(lhs, rhs, op) => {
                 let lhs = match &**lhs {
@@ -308,7 +308,7 @@ impl ExpressionNode {
 }
 
 impl SyntaxTree {
-    pub fn lpl_formatted(&self) -> String {
+    fn lpl_formatted(&self) -> String {
         self.root().lpl_formatted()
     }
 }

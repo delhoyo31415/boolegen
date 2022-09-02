@@ -6,7 +6,7 @@ use crate::{
     lexer::{Lexer, OperatorToken, Precedence, Token},
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BinaryOperator {
     And,
     Or,
@@ -45,6 +45,24 @@ impl ExpressionNode {
         self.preorder_traversal()
             .filter(|&node| !node.is_var())
             .count()
+    }
+
+    // Use the associative property of AND and OR binary operators
+    // to reestructure this node so that when printed, it uses less parenthesis
+    // What is actually being implemented is a left rotation
+    // It is guaranteed that the result of eval will be the same, but no the structure
+    pub fn transform_equivalent(&mut self) {
+        if let ExpressionNode::BinaryExpression(lhs, rhs, op) = self {
+            if let ExpressionNode::BinaryExpression(rhs_lhs, rhs_rhs, rhs_op) = &mut **rhs {
+                if op == rhs_op {
+                    if let BinaryOperator::And | BinaryOperator::Or = op {
+                        std::mem::swap(lhs, rhs_rhs);
+                        std::mem::swap(rhs_lhs, rhs_rhs);
+                        std::mem::swap(lhs, rhs);
+                    }
+                }
+            }
+        }
     }
 
     pub fn eval(&self, env: &Env, inputs: &[BooleanValue]) -> BooleanValue {
@@ -366,5 +384,32 @@ mod tests {
             tree.eval(&[BooleanValue::True, BooleanValue::True]),
             BooleanValue::True
         );
+    }
+
+    #[test]
+    fn node_is_transformed_correctly() {
+        let mut node = ExpressionNode::BinaryExpression(
+            Box::new(ExpressionNode::Var(Rc::from("a"))),
+            Box::new(ExpressionNode::BinaryExpression(
+                Box::new(ExpressionNode::Var(Rc::from("b"))),
+                Box::new(ExpressionNode::Var(Rc::from("c"))),
+                BinaryOperator::Or,
+            )),
+            BinaryOperator::Or,
+        );
+
+        let expected = ExpressionNode::BinaryExpression(
+            Box::new(ExpressionNode::BinaryExpression(
+                Box::new(ExpressionNode::Var(Rc::from("a"))),
+                Box::new(ExpressionNode::Var(Rc::from("b"))),
+                BinaryOperator::Or,
+            )),
+            Box::new(ExpressionNode::Var(Rc::from("c"))),
+            BinaryOperator::Or,
+        );
+
+        node.transform_equivalent();
+
+        assert_eq!(node, expected);
     }
 }
