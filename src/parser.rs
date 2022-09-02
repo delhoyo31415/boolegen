@@ -189,7 +189,7 @@ impl Parser {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct Env {
     // Map the position to the string
     names: Vec<Rc<str>>,
@@ -241,14 +241,6 @@ impl Env {
     }
 }
 
-impl Default for Env {
-    fn default() -> Self {
-        Self {
-            names: Vec::new(),
-            map: HashMap::new(),
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct SyntaxTree {
