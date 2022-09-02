@@ -34,7 +34,7 @@ pub enum ExpressionNode {
 
 impl ExpressionNode {
     pub fn is_var(&self) -> bool {
-        matches!(self, ExpressionNode::Var(_))
+        matches!(self, ExpressionNode::Var(..))
     }
 
     pub fn preorder_traversal(&self) -> impl Iterator<Item = &Self> {
@@ -250,6 +250,10 @@ impl SyntaxTree {
 
     pub fn preorder_traversal(&self) -> impl Iterator<Item = &ExpressionNode> {
         self.root.preorder_traversal()
+    }
+
+    pub fn root(&self) -> &ExpressionNode {
+        &self.root
     }
 
     pub fn env(&self) -> &Env {

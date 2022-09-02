@@ -1,8 +1,8 @@
 use std::time::SystemTime;
 
 use crate::{
-    boolean_value::{BooleanValue, ColumnsBooleanVariations},
-    parser::SyntaxTree,
+    boolean_value::{BooleanValue, BooleanVariations, ColumnsBooleanVariations},
+    parser::{BinaryOperator, ExpressionNode, SyntaxTree},
 };
 
 pub struct LplBooleGenerator<'a> {
@@ -39,7 +39,7 @@ impl<'a> LplBooleGenerator<'a> {
         self.output += open_timestamp.to_string().as_str();
         self.output += "D";
         self.output += close_timestamp.to_string().as_str();
-        self.output += "\rNewFormat\r"
+        self.output += "\rnewFormat\r"
     }
 
     fn write_generated_column(&mut self, values: &[BooleanValue], name: &str) {
@@ -86,7 +86,72 @@ impl<'a> LplBooleGenerator<'a> {
         self.output += ";";
     }
 
-    pub fn generate(&mut self) {
+    fn write_subcolumns(&mut self, subcols_data: &[SubColumnData]) {
+        self.output += "_fTruthColumnExist:";
+        self.output += subcols_data.len().to_string().as_str();
+        self.output += "[";
+        for (idx, data) in subcols_data.iter().enumerate() {
+            data.write(&mut self.output);
+            if idx != subcols_data.len() - 1 {
+                self.output += ",";
+            }
+        }
+        self.output += "]";
+    }
+
+    fn write_answer_column(&mut self, expr: &str, subcols_data: &[SubColumnData]) {
+        self.output += "openproof.boole.BooleExpressionData=openproof.boole.BooleExpressionData{";
+        self.output += "_fLabelNum=0;_fLabelText=\"\";_fByBoole=false;";
+        self.write_subcolumns(subcols_data);
+        self.output += "_fExpression=\"";
+        self.output += expr;
+        self.output += "\";";
+        self.write_status_column(1 << self.syntax_tree.env().var_count());
+        self.output += "}";
+    }
+
+    fn write_answer_columns(&mut self) {
+        let cols = self.subcolumn_data();
+        // TODO: allow multiple subcolumns
+        self.write_answer_column(self.syntax_tree.lpl_formatted().as_str(), &cols);
+    }
+
+    fn write_truth_table_row_status(&mut self, num: usize) {
+        self.output += "openproof.boole.status.TruthTableRowStatus=openproof.boole.status.TruthTableRowStatus{";
+        self.output += "c=1;s=\"\";l=\"\";d@k=\"\";t=false;r=";
+        self.output += num.to_string().as_str();
+        self.output += ";}";
+    }
+
+    fn subcolumn_data(&self) -> Vec<SubColumnData> {
+        let var_count = self.syntax_tree.env().var_count();
+        let mut data =
+            vec![SubColumnData::with_capacity(1 << var_count); self.syntax_tree.degree()];
+
+        let mut iter = BooleanVariations::reversed(var_count);
+        let mut stored_values = LplIntermediateEval::new(self.syntax_tree);
+        while let Some(inputs) = iter.next_variation() {
+            stored_values.eval(inputs);
+            for (col, &value) in data.iter_mut().zip(stored_values.intermediates()) {
+                col.add(value)
+            }
+        }
+
+        data
+    }
+
+    fn write_status_column(&mut self, num_columns: usize) {
+        self.output += "_fStatusColumn(";
+        for num in 0..=num_columns {
+            self.write_truth_table_row_status(num);
+            if num != num_columns {
+                self.output += ",";
+            }
+        }
+        self.output += ")o()";
+    }
+
+    fn write_all(&mut self) {
         self.write_headers();
 
         self.output += "=openproof.zen.Openproof{";
@@ -97,16 +162,22 @@ impl<'a> LplBooleGenerator<'a> {
         self.write_generated_columns();
         self.output += ")_fIsReferenceSide=true;"; // fExpVector;
         self.output += "}"; // RefData=ExpressionPanelData
+        self.output += "_fSentData=openproof.boole.entities.ExpressionPanelData{";
+        self.output += "_fExpVector(";
+        self.write_answer_columns();
+        self.output += ")_fIsReferenceSide=false;"; // fExpVector
+        self.output += "}"; // SentData=ExpressionPanelData
         self.output += "_fIsTaut=@;_fIsTTPossible=@;_fAreTautEquiv=@;_fIsLastSentenceTautCon=@;";
         self.output += "_fIsFirstSentenceTautCon=@;_fNeedToBeComplete=@;isContra=@;isTTContra=@;";
         self.output += "}"; // _fAssessmentData=openproof.boole.entities.AssessmentData{
         self.output += "}"; // p=openproof.boole.Boole{
         self.output += "}"; //=openproof.zen.Openproof
+
         self.write_checksums();
     }
 
     pub fn into_string(mut self) -> String {
-        self.generate();
+        self.write_all();
         self.output
     }
 }
@@ -141,6 +212,141 @@ where
     }
 
     checksum
+}
+
+// Evaluates the expression, storing the intermediate results
+// in inorder and ignoring the variables
+struct LplIntermediateEval<'a> {
+    tree: &'a SyntaxTree,
+    results: Vec<BooleanValue>,
+}
+
+impl<'a> LplIntermediateEval<'a> {
+    pub fn new(tree: &'a SyntaxTree) -> Self {
+        let values = tree.degree();
+        Self {
+            tree,
+            results: vec![BooleanValue::False; values],
+        }
+    }
+
+    pub fn eval(&mut self, inputs: &[BooleanValue]) -> BooleanValue {
+        let (final_result, _) = self.intermediate_eval(self.tree.root(), inputs, 0);
+        final_result
+    }
+
+    pub fn intermediates(&self) -> &[BooleanValue] {
+        &self.results
+    }
+
+    fn intermediate_eval(
+        &mut self,
+        node: &ExpressionNode,
+        inputs: &[BooleanValue],
+        store_idx: usize,
+    ) -> (BooleanValue, usize) {
+        match node {
+            ExpressionNode::BinaryExpression(lhs, rhs, op) => {
+                let (lhs_value, store_idx) = self.intermediate_eval(lhs, inputs, store_idx);
+                let (rhs_value, next_store_idx) =
+                    self.intermediate_eval(rhs, inputs, store_idx + 1);
+                let result = op.apply(lhs_value, rhs_value);
+                self.results[store_idx] = result;
+                (result, next_store_idx)
+            }
+            ExpressionNode::NotExpression(expr) => {
+                let (value, next_store_idx) = self.intermediate_eval(expr, inputs, store_idx + 1);
+                let result = value.not();
+                self.results[store_idx] = result;
+                (result, next_store_idx)
+            }
+            ExpressionNode::Var(_) => (node.eval(self.tree.env(), inputs), store_idx),
+        }
+    }
+}
+
+impl ExpressionNode {
+    // TODO: think on a way which does not involve a heap allocations per stack frame
+    pub fn lpl_formatted(&self) -> String {
+        match self {
+            ExpressionNode::BinaryExpression(lhs, rhs, op) => {
+                let lhs = match &**lhs {
+                    ExpressionNode::BinaryExpression(.., lhs_op) if op != lhs_op => {
+                        format!("({})", lhs.lpl_formatted())
+                    }
+                    ExpressionNode::BinaryExpression(.., lhs_op) => match lhs_op {
+                        BinaryOperator::And | BinaryOperator::Or => lhs.lpl_formatted(),
+                        BinaryOperator::Conditional | BinaryOperator::Biconditional => {
+                            format!("({})", lhs.lpl_formatted())
+                        }
+                    },
+                    _ => lhs.lpl_formatted(),
+                };
+
+                // RHS is treated differently than LHS to ensure LPL Boole generates the same
+                // AST as this program does
+                let rhs = match &**rhs {
+                    ExpressionNode::BinaryExpression(..) => {
+                        format!("({})", rhs.lpl_formatted())
+                    }
+                    _ => rhs.lpl_formatted(),
+                };
+
+                format!("{} {} {}", lhs, op.lpl_boole_encoded(), rhs)
+            }
+            ExpressionNode::NotExpression(not_expr) => {
+                let parenthesized = not_expr.lpl_formatted();
+                if not_expr.is_var() {
+                    format!("~{parenthesized}")
+                } else {
+                    format!("~({parenthesized})")
+                }
+            }
+            ExpressionNode::Var(name) => name.to_string(),
+        }
+    }
+}
+
+impl SyntaxTree {
+    pub fn lpl_formatted(&self) -> String {
+        self.root().lpl_formatted()
+    }
+}
+
+impl BinaryOperator {
+    fn lpl_boole_encoded(&self) -> &'static str {
+        match self {
+            BinaryOperator::And => "&",
+            BinaryOperator::Or => "|",
+            BinaryOperator::Conditional => "$",
+            BinaryOperator::Biconditional => "%",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SubColumnData {
+    values: Vec<BooleanValue>,
+}
+
+impl SubColumnData {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            values: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub fn add(&mut self, value: BooleanValue) {
+        self.values.push(value);
+    }
+
+    pub fn write(&self, output: &mut String) {
+        *output += "openproof.boole.TruthColumnData=openproof.boole.TruthColumnData{";
+        *output += "v=\"";
+        output.extend(self.values.iter().map(BooleanValue::lpl_boole_encoded));
+        *output += "\\000\";_fCharIndex=0;_fByBoole=false;";
+        *output += "}";
+    }
 }
 
 impl BooleanValue {

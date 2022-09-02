@@ -44,7 +44,6 @@ impl OperatorToken {
     }
 }
 
-// TODO: I should replace String by Rc<str>?
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token {
     Operator(OperatorToken),
