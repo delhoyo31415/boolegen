@@ -2,7 +2,8 @@ use std::time::SystemTime;
 
 use crate::{
     boolean_value::{BooleanValue, BooleanVariations, ColumnsBooleanVariations},
-    parser::{BinaryOperator, ExpressionNode, SyntaxTree},
+    error::FileGeneratorError,
+    parser::{BinaryOperator, Env, ExpressionNode, SyntaxTree},
 };
 
 pub struct LplBooleGenerator<'a> {
@@ -11,15 +12,25 @@ pub struct LplBooleGenerator<'a> {
 }
 
 impl<'a> LplBooleGenerator<'a> {
-    pub fn new(syntax_tree: &'a SyntaxTree) -> Self {
+    pub fn new(syntax_tree: &'a SyntaxTree) -> Result<Self, FileGeneratorError> {
         // By default, the buffer will have 4KB
         Self::with_capacity(syntax_tree, 4 * 1024)
     }
 
-    pub fn with_capacity(syntax_tree: &'a SyntaxTree, capacity: usize) -> Self {
-        Self {
-            syntax_tree,
-            output: String::with_capacity(capacity),
+    pub fn with_capacity(
+        syntax_tree: &'a SyntaxTree,
+        capacity: usize,
+    ) -> Result<Self, FileGeneratorError> {
+        if syntax_tree.env().can_be_lpl_encoded() {
+            Ok(Self {
+                syntax_tree,
+                output: String::with_capacity(capacity),
+            })
+        } else {
+            Err(FileGeneratorError::InvalidExpression(
+                "Variables must start with a capital letter"
+                    .to_string(),
+            ))
         }
     }
 
@@ -215,6 +226,21 @@ where
     }
 
     checksum
+}
+
+impl Env {
+    fn can_be_lpl_encoded(&self) -> bool {
+        // LPL boole only accepts as a variable a string which is
+        // alphabetic and whose first letter start is capitalized is capitalized
+        self.names_iter().all(|name| {
+            let mut chars = name.chars();
+            if let Some(first_letter) = chars.next() {
+                first_letter.is_ascii_uppercase() && chars.all(char::is_alphabetic)
+            } else {
+                false
+            }
+        })
+    }
 }
 
 // Evaluates the expression, storing the intermediate results
