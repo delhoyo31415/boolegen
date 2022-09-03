@@ -273,26 +273,22 @@ impl ExpressionNode {
     fn lpl_formatted(&self) -> String {
         match self {
             ExpressionNode::BinaryExpression(lhs, rhs, op) => {
-                let lhs = match &**lhs {
-                    ExpressionNode::BinaryExpression(.., lhs_op) if op != lhs_op => {
+                let lhs = if let ExpressionNode::BinaryExpression(.., lhs_op) = &**lhs {
+                    if op == lhs_op && op.is_associative() {
+                        lhs.lpl_formatted()
+                    } else {
                         format!("({})", lhs.lpl_formatted())
                     }
-                    ExpressionNode::BinaryExpression(.., lhs_op) => match lhs_op {
-                        BinaryOperator::And | BinaryOperator::Or => lhs.lpl_formatted(),
-                        BinaryOperator::Conditional | BinaryOperator::Biconditional => {
-                            format!("({})", lhs.lpl_formatted())
-                        }
-                    },
-                    _ => lhs.lpl_formatted(),
+                } else {
+                    lhs.lpl_formatted()
                 };
 
                 // RHS is treated differently than LHS to ensure LPL Boole generates the same
                 // AST as this program does
-                let rhs = match &**rhs {
-                    ExpressionNode::BinaryExpression(..) => {
-                        format!("({})", rhs.lpl_formatted())
-                    }
-                    _ => rhs.lpl_formatted(),
+                let rhs = if let ExpressionNode::BinaryExpression(..) = &**rhs {
+                    format!("({})", rhs.lpl_formatted())
+                } else {
+                    rhs.lpl_formatted()
                 };
 
                 format!("{} {} {}", lhs, op.lpl_boole_encoded(), rhs)

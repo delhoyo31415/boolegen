@@ -1,10 +1,12 @@
-use std::{collections::HashMap, rc::Rc, str::FromStr};
+use std::{cmp::Ordering, collections::HashMap, rc::Rc, str::FromStr};
 
 use crate::{
     boolean_value::BooleanValue,
     error::BooleExprError,
-    lexer::{Lexer, OperatorToken, Precedence, Token},
+    lexer::{Lexer, Token},
 };
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+pub struct Precedence(u32);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BinaryOperator {
@@ -15,12 +17,54 @@ pub enum BinaryOperator {
 }
 
 impl BinaryOperator {
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            BinaryOperator::And => "&",
+            BinaryOperator::Or => "|",
+            BinaryOperator::Conditional => "->",
+            BinaryOperator::Biconditional => "<->",
+        }
+    }
+
     pub fn apply(&self, first_op: BooleanValue, second_op: BooleanValue) -> BooleanValue {
         match self {
             BinaryOperator::And => first_op.and(second_op),
             BinaryOperator::Or => first_op.or(second_op),
             BinaryOperator::Conditional => first_op.conditional(second_op),
             BinaryOperator::Biconditional => first_op.biconditional(second_op),
+        }
+    }
+
+    pub fn is_associative(&self) -> bool {
+        *self == BinaryOperator::And || *self == BinaryOperator::Or
+    }
+
+    pub fn precedence(&self) -> Precedence {
+        match self {
+            BinaryOperator::And | BinaryOperator::Or => Precedence(2),
+            BinaryOperator::Conditional | BinaryOperator::Biconditional => Precedence(1),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum Operator {
+    Binary(BinaryOperator),
+    Not,
+}
+
+impl Operator {
+    pub fn precedence(&self) -> Precedence {
+        match self {
+            Operator::Binary(op) => op.precedence(),
+            Operator::Not => Precedence(3),
+        }
+    }
+
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            Operator::Binary(op) => op.symbol(),
+            Operator::Not => "~",
         }
     }
 }
@@ -63,12 +107,10 @@ impl ExpressionNode {
     fn transform_current_equivalent(&mut self) {
         if let ExpressionNode::BinaryExpression(lhs, rhs, op) = self {
             if let ExpressionNode::BinaryExpression(rhs_lhs, rhs_rhs, rhs_op) = &mut **rhs {
-                if op == rhs_op {
-                    if let BinaryOperator::And | BinaryOperator::Or = op {
-                        std::mem::swap(lhs, rhs_rhs);
-                        std::mem::swap(rhs_lhs, rhs_rhs);
-                        std::mem::swap(lhs, rhs);
-                    }
+                if op == rhs_op && op.is_associative() {
+                    std::mem::swap(lhs, rhs_rhs);
+                    std::mem::swap(rhs_lhs, rhs_rhs);
+                    std::mem::swap(lhs, rhs);
                 }
             }
         }
@@ -103,7 +145,7 @@ impl Parser {
     }
 
     pub fn parse(&mut self) -> Result<SyntaxTree, BooleExprError> {
-        let expr = self.parse_expression(Precedence::min())?;
+        let expr = self.parse_expression(None)?;
         if self.lexer.peek()? == Token::Eof {
             Ok(SyntaxTree::new(expr))
         } else {
@@ -113,13 +155,13 @@ impl Parser {
 
     fn parse_prefix(&mut self) -> Result<Box<ExpressionNode>, BooleExprError> {
         let lhs = match self.lexer.consume()? {
-            Token::Operator(OperatorToken::Tilde) => {
-                let expr = self.parse_expression(OperatorToken::Tilde.precedende())?;
+            Token::Tilde => {
+                let expr = self.parse_expression(Some(Operator::Not))?;
                 Box::new(ExpressionNode::NotExpression(expr))
             }
             Token::Identifier(name) => Box::new(ExpressionNode::Var(name)),
             Token::LParen => {
-                let expr = self.parse_expression(Precedence::min())?;
+                let expr = self.parse_expression(None)?;
                 if self.lexer.consume()? != Token::RParen {
                     return self.error("Missing closing parenthesis".to_string());
                 }
@@ -135,23 +177,50 @@ impl Parser {
         Ok(lhs)
     }
 
+    fn stop_recursion(
+        &self,
+        binary_op: BinaryOperator,
+        prev_op: Option<Operator>,
+    ) -> Result<bool, BooleExprError> {
+        if let Some(prev_op) = prev_op {
+            match prev_op.precedence().cmp(&binary_op.precedence()) {
+                Ordering::Equal => {
+                    if Operator::Binary(binary_op) == prev_op && binary_op.is_associative() {
+                        Ok(true)
+                    } else {
+                        self.error(format!(
+                            "Ambiguous expression, '{}' followed by '{}'",
+                            prev_op.symbol(),
+                            binary_op.symbol()
+                        ))
+                    }
+                }
+                Ordering::Greater => Ok(true),
+                Ordering::Less => Ok(false),
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
     fn parse_infix(
         &mut self,
         mut lhs: Box<ExpressionNode>,
-        precedence: Precedence,
+        prev_op: Option<Operator>,
     ) -> Result<Box<ExpressionNode>, BooleExprError> {
         loop {
-            match self.lexer.peek()? {
-                Token::Operator(op) if op.is_binary() => {
-                    // This implies that in case of a tie, the operator will be associated to the left
-                    if precedence >= op.precedende() {
+            let token = self.lexer.peek()?;
+
+            match token {
+                Token::Ampersand | Token::Pipe | Token::Arrow | Token::DoubleArrow => {
+                    let op = self.parse_binary_operator(&token).unwrap();
+
+                    if self.stop_recursion(op, prev_op)? {
                         break;
                     }
+
                     self.lexer.consume()?;
-
-                    let rhs = self.parse_expression(op.precedende())?;
-                    let op = self.parse_binary_operator(&op).unwrap();
-
+                    let rhs = self.parse_expression(Some(Operator::Binary(op)))?;
                     lhs = Box::new(ExpressionNode::BinaryExpression(lhs, rhs, op))
                 }
                 Token::RParen | Token::Eof => break,
@@ -167,19 +236,19 @@ impl Parser {
 
     fn parse_expression(
         &mut self,
-        precedence: Precedence,
+        prev_op: Option<Operator>,
     ) -> Result<Box<ExpressionNode>, BooleExprError> {
         let lhs = self.parse_prefix()?;
-        self.parse_infix(lhs, precedence)
+        self.parse_infix(lhs, prev_op)
     }
 
     // If op is not a binary operator, return None
-    fn parse_binary_operator(&self, op: &OperatorToken) -> Option<BinaryOperator> {
-        match op {
-            OperatorToken::Ampersand => Some(BinaryOperator::And),
-            OperatorToken::Arrow => Some(BinaryOperator::Conditional),
-            OperatorToken::DoubleArrow => Some(BinaryOperator::Biconditional),
-            OperatorToken::Pipe => Some(BinaryOperator::Or),
+    fn parse_binary_operator(&self, token: &Token) -> Option<BinaryOperator> {
+        match token {
+            Token::Ampersand => Some(BinaryOperator::And),
+            Token::Arrow => Some(BinaryOperator::Conditional),
+            Token::DoubleArrow => Some(BinaryOperator::Biconditional),
+            Token::Pipe => Some(BinaryOperator::Or),
             _ => None,
         }
     }
@@ -288,6 +357,15 @@ impl SyntaxTree {
     }
 }
 
+impl FromStr for SyntaxTree {
+    type Err = BooleExprError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let lexer = Lexer::new(s);
+        Parser::new(lexer).parse()
+    }
+}
+
 struct PreorderTraversal<'a> {
     stack: Vec<&'a ExpressionNode>,
 }
@@ -311,22 +389,13 @@ impl<'a> Iterator for PreorderTraversal<'a> {
     }
 }
 
-impl FromStr for SyntaxTree {
-    type Err = BooleExprError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let lexer = Lexer::new(s);
-        Parser::new(lexer).parse()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn parser_correctly_parses_expression() {
-        let tree = "a -> ~(c | b & d)".parse::<SyntaxTree>();
+        let tree = "a -> ~((c | b) & d)".parse::<SyntaxTree>();
 
         let expected = Box::new(ExpressionNode::BinaryExpression(
             Box::new(ExpressionNode::Var(Rc::from("a"))),
@@ -355,6 +424,11 @@ mod tests {
         assert!("a~b".parse::<SyntaxTree>().is_err());
         assert!("a b <-> d".parse::<SyntaxTree>().is_err());
         assert!("a & ()".parse::<SyntaxTree>().is_err());
+
+        // These expressions are ambiguous expressions
+        assert!("a -> b -> c".parse::<SyntaxTree>().is_err());
+        assert!("a | b & c".parse::<SyntaxTree>().is_err());
+        assert!("a | b | c <-> c & c -> d".parse::<SyntaxTree>().is_err());
     }
 
     #[test]

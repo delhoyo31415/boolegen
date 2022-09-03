@@ -2,51 +2,15 @@ use std::{cmp::Ordering, fmt::Display, iter::Peekable, rc::Rc};
 
 use crate::error::BooleExprError;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
-pub struct Precedence(pub u32);
 
-impl Precedence {
-    pub fn min() -> Self {
-        Self(0)
-    }
-}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum OperatorToken {
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Token {
     Tilde,
     Ampersand,
     Pipe,
     Arrow,
     DoubleArrow,
-}
-
-impl OperatorToken {
-    pub fn is_binary(&self) -> bool {
-        *self != OperatorToken::Tilde
-    }
-
-    pub fn lexeme(&self) -> &'static str {
-        match self {
-            OperatorToken::Tilde => "~",
-            OperatorToken::Ampersand => "&",
-            OperatorToken::Pipe => "|",
-            OperatorToken::Arrow => "->",
-            OperatorToken::DoubleArrow => "<->",
-        }
-    }
-
-    pub fn precedende(&self) -> Precedence {
-        match self {
-            OperatorToken::Arrow | OperatorToken::DoubleArrow => Precedence(1),
-            OperatorToken::Ampersand | OperatorToken::Pipe => Precedence(2),
-            OperatorToken::Tilde => Precedence(3),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Token {
-    Operator(OperatorToken),
     Identifier(Rc<str>),
     LParen,
     RParen,
@@ -56,7 +20,11 @@ pub enum Token {
 impl Token {
     pub fn lexeme(&self) -> &str {
         match self {
-            Token::Operator(op) => op.lexeme(),
+            Token::Tilde => "~",
+            Token::Ampersand => "&",
+            Token::Pipe => "|",
+            Token::Arrow => "->",
+            Token::DoubleArrow => "<->",
             Token::Identifier(name) => name,
             Token::LParen => "(",
             Token::RParen => ")",
@@ -114,7 +82,7 @@ impl TokenGenerator {
         match self.input.get(self.index..self.index + 2) {
             Some(['-', '>']) => {
                 self.index += 2;
-                Ok(Token::Operator(OperatorToken::DoubleArrow))
+                Ok(Token::DoubleArrow)
             }
             Some(other) => {
                 self.index += 2;
@@ -129,7 +97,7 @@ impl TokenGenerator {
         match self.input.get(self.index) {
             Some('>') => {
                 self.index += 1;
-                Ok(Token::Operator(OperatorToken::Arrow))
+                Ok(Token::Arrow)
             }
             Some(chr) => {
                 self.index += 1;
@@ -179,15 +147,15 @@ impl TokenGenerator {
             }
             '&' => {
                 self.index += 1;
-                Some(Ok(Token::Operator(OperatorToken::Ampersand)))
+                Some(Ok(Token::Ampersand))
             }
             '|' => {
                 self.index += 1;
-                Some(Ok(Token::Operator(OperatorToken::Pipe)))
+                Some(Ok(Token::Pipe))
             }
             '~' => {
                 self.index += 1;
-                Some(Ok(Token::Operator(OperatorToken::Tilde)))
+                Some(Ok(Token::Tilde))
             }
             '<' => Some(self.lex_double_arrow()),
             '-' => Some(self.lex_arrow()),
@@ -228,10 +196,10 @@ mod tests {
         let tokens = vec_tokens("a -><->cd&").unwrap();
         let expected = [
             Token::Identifier(Rc::from("a")),
-            Token::Operator(OperatorToken::Arrow),
-            Token::Operator(OperatorToken::DoubleArrow),
+            Token::Arrow,
+            Token::DoubleArrow,
             Token::Identifier(Rc::from("cd")),
-            Token::Operator(OperatorToken::Ampersand),
+            Token::Ampersand,
             Token::Eof,
         ];
         assert_eq!(tokens, expected);
@@ -239,9 +207,9 @@ mod tests {
         let tokens = vec_tokens("a|b~").unwrap();
         let expected = [
             Token::Identifier(Rc::from("a")),
-            Token::Operator(OperatorToken::Pipe),
+            Token::Pipe,
             Token::Identifier(Rc::from("b")),
-            Token::Operator(OperatorToken::Tilde),
+            Token::Tilde,
             Token::Eof,
         ];
         assert_eq!(tokens, expected);
