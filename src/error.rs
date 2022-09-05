@@ -16,7 +16,6 @@ impl Display for BooleExprError {
 
 impl Error for BooleExprError {}
 
-
 #[derive(Debug, Clone)]
 pub enum FileGeneratorError {
     InvalidExpression(String),
@@ -25,7 +24,7 @@ pub enum FileGeneratorError {
 impl Display for FileGeneratorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FileGeneratorError::InvalidExpression(msg) => msg.fmt(f)
+            FileGeneratorError::InvalidExpression(msg) => msg.fmt(f),
         }
     }
 }

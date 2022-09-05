@@ -28,8 +28,7 @@ impl<'a> LplBooleGenerator<'a> {
             })
         } else {
             Err(FileGeneratorError::InvalidExpression(
-                "Variables must start with a capital letter"
-                    .to_string(),
+                "Variables must start with a capital letter".to_string(),
             ))
         }
     }
@@ -86,12 +85,12 @@ impl<'a> LplBooleGenerator<'a> {
     }
 
     fn write_checksums(&mut self) {
-        let checksum = simple_checksum(self.output.bytes()).to_string();
+        let checksum = simple_checksum(&self.output).to_string();
         self.output += "c=";
         self.output += &checksum;
         self.output += ";\r";
 
-        let checksum = circle_shift_checksum(self.output.bytes()).to_string();
+        let checksum = circle_shift_checksum(&self.output).to_string();
         self.output += "s=";
         self.output += &checksum;
         self.output += ";";
@@ -196,25 +195,22 @@ impl<'a> LplBooleGenerator<'a> {
     }
 }
 
-pub fn simple_checksum<I>(input: I) -> u64
-where
-    I: IntoIterator<Item = u8>,
-{
+pub fn simple_checksum<I: AsRef<[u8]>>(input: I) -> u64 {
     input
-        .into_iter()
-        .filter(|&byte| byte != 0x0D && byte != 0x0A)
-        .map(|byte| byte as u64)
+        .as_ref()
+        .iter()
+        .filter(|&&byte| byte != 0x0D && byte != 0x0A)
+        .map(|&byte| byte as u64)
         .sum()
 }
 
-pub fn circle_shift_checksum<I>(input: I) -> u64
-where
-    I: IntoIterator<Item = u8>,
-{
+pub fn circle_shift_checksum<I: AsRef<[u8]>>(input: I) -> u64 {
+    let input = input.as_ref();
+
     let mut checksum = 0;
     let mut shifter = 0;
 
-    for byte in input {
+    for &byte in input {
         let byte = byte as u64;
 
         if byte == 0x0D || byte == 0x0A {

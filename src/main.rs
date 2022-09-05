@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     }
 
     let lpl_output = LplBooleGenerator::new(&tree)
-        .context("Invalid expression for generator")?
+        .context("Invalid expression for LPL file")?
         .into_string();
 
     let output_name = cli.output.unwrap_or_else(|| "truth_table.tt".into());

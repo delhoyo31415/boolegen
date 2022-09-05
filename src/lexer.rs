@@ -2,8 +2,6 @@ use std::{cmp::Ordering, fmt::Display, iter::Peekable, rc::Rc};
 
 use crate::error::BooleExprError;
 
-
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token {
     Tilde,
