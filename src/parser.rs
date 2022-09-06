@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::{cmp::Ordering, collections::HashMap, rc::Rc, str::FromStr};
+use std::{cmp::Ordering, collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
 
 use crate::{
     boolean_value::BooleanValue,
@@ -147,6 +147,50 @@ impl ExpressionNode {
                     .expect("Boolean value not supplied")
             }
         }
+    }
+
+    fn infix_notation(&self) -> String {
+        match self {
+            ExpressionNode::BinaryExpression(lhs, rhs, op) => {
+                let lhs = if let ExpressionNode::BinaryExpression(.., lhs_op) = &**lhs {
+                    if lhs_op.precedence() > op.precedence() || op == lhs_op && op.is_associative()
+                    {
+                        lhs.infix_notation()
+                    } else {
+                        format!("({})", lhs.infix_notation())
+                    }
+                } else {
+                    lhs.infix_notation()
+                };
+
+                let rhs = match &**rhs {
+                    ExpressionNode::BinaryExpression(.., rhs_op)
+                        if rhs_op.precedence() <= op.precedence() =>
+                    {
+                        format!("({})", rhs.infix_notation())
+                    }
+                    _ => rhs.infix_notation(),
+                };
+
+                format!("{} {} {}", lhs, op.symbol(), rhs)
+            }
+
+            ExpressionNode::NotExpression(not_expr) => {
+                let parenthesized = not_expr.infix_notation();
+                if not_expr.is_var() {
+                    format!("~{parenthesized}")
+                } else {
+                    format!("~({parenthesized})")
+                }
+            }
+            ExpressionNode::Var(name) => name.to_string(),
+        }
+    }
+}
+
+impl Display for ExpressionNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.infix_notation().fmt(f)
     }
 }
 
@@ -378,6 +422,12 @@ impl FromStr for SyntaxTree {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lexer = Lexer::new(s);
         Parser::new(lexer).parse()
+    }
+}
+
+impl Display for SyntaxTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.root().fmt(f)
     }
 }
 
