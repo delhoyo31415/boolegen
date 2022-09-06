@@ -96,6 +96,10 @@ impl ExpressionNode {
         matches!(self, ExpressionNode::Var(..))
     }
 
+    pub fn postorder_traversal(&self) -> impl Iterator<Item = &Self> {
+        PostorderTraversal::new(self)
+    }
+
     pub fn preorder_traversal(&self) -> impl Iterator<Item = &Self> {
         PreorderTraversal { stack: vec![self] }
     }
@@ -398,6 +402,10 @@ impl SyntaxTree {
         self.root.preorder_traversal()
     }
 
+    pub fn postorder_traversal(&self) -> impl Iterator<Item = &ExpressionNode> {
+        self.root.postorder_traversal()
+    }
+
     pub fn transform_equivalent(&mut self) {
         self.root.transform_equivalent();
     }
@@ -451,6 +459,39 @@ impl<'a> Iterator for PreorderTraversal<'a> {
         }
 
         Some(node)
+    }
+}
+
+struct PostorderTraversal<'a> {
+    output: Vec<&'a ExpressionNode>,
+}
+
+impl<'a> PostorderTraversal<'a> {
+    fn new(node: &'a ExpressionNode) -> Self {
+        let mut input = vec![node];
+        let mut output = Vec::new();
+
+        while let Some(node) = input.pop() {
+            match node {
+                ExpressionNode::BinaryExpression(lhs, rhs, _) => {
+                    input.push(lhs);
+                    input.push(rhs);
+                }
+                ExpressionNode::NotExpression(expr) => input.push(expr),
+                ExpressionNode::Var(_) => {}
+            }
+            output.push(node);
+        }
+
+        Self { output }
+    }
+}
+
+impl<'a> Iterator for PostorderTraversal<'a> {
+    type Item = &'a ExpressionNode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.output.pop()
     }
 }
 
@@ -540,5 +581,21 @@ mod tests {
         tree.transform_equivalent();
         let expected: SyntaxTree = "a -> ((b -> c) | (d -> c) | (a & d))".parse().unwrap();
         assert_eq!(tree.root(), expected.root());
+    }
+
+    #[test]
+    fn tree_traversed_in_postorder() {
+        let tree: SyntaxTree = "a & b -> c | ~d".parse().unwrap();
+        let mut postorder = tree.postorder_traversal();
+
+        assert_eq!(postorder.next().unwrap().to_string(), "a");
+        assert_eq!(postorder.next().unwrap().to_string(), "b");
+        assert_eq!(postorder.next().unwrap().to_string(), "a & b");
+        assert_eq!(postorder.next().unwrap().to_string(), "c");
+        assert_eq!(postorder.next().unwrap().to_string(), "d");
+        assert_eq!(postorder.next().unwrap().to_string(), "~d");
+        assert_eq!(postorder.next().unwrap().to_string(), "c | ~d");
+        assert_eq!(postorder.next().unwrap().to_string(), "a & b -> c | ~d");
+        assert_eq!(postorder.next(), None);
     }
 }
