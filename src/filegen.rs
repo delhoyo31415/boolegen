@@ -21,31 +21,70 @@ use crate::{
     parser::{BinaryOperator, Env, ExpressionNode, SyntaxTree},
 };
 
+pub struct LpLBooleGeneratorBuilder {
+    capacity: usize,
+    write_subexpressions: bool,
+}
+
+impl LpLBooleGeneratorBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn write_subexpressions(&mut self, write_subexpressions: bool) -> &mut Self {
+        self.write_subexpressions = write_subexpressions;
+        self
+    }
+
+    pub fn with_capacity(&mut self, capacity: usize) -> &mut Self {
+        self.capacity = capacity;
+        self
+    }
+
+    pub fn build<'a>(
+        &self,
+        tree: &'a SyntaxTree,
+    ) -> Result<LplBooleGenerator<'a>, FileGeneratorError> {
+        LplBooleGenerator::from_builder(self, tree)
+    }
+}
+
+impl Default for LpLBooleGeneratorBuilder {
+    fn default() -> Self {
+        // A default capacity of 4KB
+        Self {
+            capacity: 4 * 1024,
+            write_subexpressions: false,
+        }
+    }
+}
+
 pub struct LplBooleGenerator<'a> {
     syntax_tree: &'a SyntaxTree,
+    write_subexpressions: bool,
     output: String,
 }
 
 impl<'a> LplBooleGenerator<'a> {
-    pub fn new(syntax_tree: &'a SyntaxTree) -> Result<Self, FileGeneratorError> {
-        // By default, the buffer will have 4KB
-        Self::with_capacity(syntax_tree, 4 * 1024)
-    }
-
-    pub fn with_capacity(
+    fn from_builder(
+        builder: &LpLBooleGeneratorBuilder,
         syntax_tree: &'a SyntaxTree,
-        capacity: usize,
     ) -> Result<Self, FileGeneratorError> {
         if syntax_tree.env().can_be_lpl_encoded() {
             Ok(Self {
                 syntax_tree,
-                output: String::with_capacity(capacity),
+                output: String::with_capacity(builder.capacity),
+                write_subexpressions: builder.write_subexpressions,
             })
         } else {
             Err(FileGeneratorError::InvalidExpression(
                 "Variables must start with a capital letter".to_string(),
             ))
         }
+    }
+
+    pub fn new(syntax_tree: &'a SyntaxTree) -> Result<Self, FileGeneratorError> {
+        LpLBooleGeneratorBuilder::new().build(&syntax_tree)
     }
 
     fn write_headers(&mut self) {
@@ -136,9 +175,24 @@ impl<'a> LplBooleGenerator<'a> {
     }
 
     fn write_answer_columns(&mut self) {
-        let cols = self.subcolumn_data();
-        // TODO: allow multiple subcolumns
-        self.write_answer_column(self.syntax_tree.lpl_formatted().as_str(), &cols);
+        // The env is the same for the subexpressions
+        let env = self.syntax_tree.env();
+
+        if self.write_subexpressions {
+            for node in self.syntax_tree.postorder_traversal() {
+                if node.is_var() {
+                    continue;
+                }
+
+                let cols = generate_subcolumn_data(node, env);
+                self.write_answer_column(node.lpl_formatted().as_str(), &cols);
+                self.output += ",";
+            }
+            self.output.pop();
+        } else {
+            let cols = generate_subcolumn_data(self.syntax_tree.root(), env);
+            self.write_answer_column(self.syntax_tree.lpl_formatted().as_str(), &cols);
+        }
     }
 
     fn write_truth_table_row_status(&mut self, is_corrected: bool, num: usize) {
@@ -150,23 +204,6 @@ impl<'a> LplBooleGenerator<'a> {
         self.output += ";s=\"\";l=\"\";d@k=\"\";t=false;r=";
         self.output += num.to_string().as_str();
         self.output += ";}";
-    }
-
-    fn subcolumn_data(&self) -> Vec<SubColumnData> {
-        let var_count = self.syntax_tree.env().var_count();
-        let mut data =
-            vec![SubColumnData::with_capacity(1 << var_count); self.syntax_tree.degree()];
-
-        let mut iter = BooleanVariations::reversed(var_count);
-        let mut stored_values = LplIntermediateEval::new(self.syntax_tree);
-        while let Some(inputs) = iter.next_variation() {
-            stored_values.eval(inputs);
-            for (col, &value) in data.iter_mut().zip(stored_values.intermediates()) {
-                col.add(value)
-            }
-        }
-
-        data
     }
 
     fn write_status_column(&mut self, num_columns: usize) {
@@ -208,6 +245,22 @@ impl<'a> LplBooleGenerator<'a> {
         self.write_all();
         self.output
     }
+}
+
+fn generate_subcolumn_data(node: &ExpressionNode, env: &Env) -> Vec<SubColumnData> {
+    let var_count = env.var_count();
+    let mut data = vec![SubColumnData::with_capacity(1 << var_count); node.degree()];
+
+    let mut iter = BooleanVariations::reversed(var_count);
+    let mut stored_values = LplIntermediateEval::new(node, env);
+    while let Some(inputs) = iter.next_variation() {
+        stored_values.eval(inputs);
+        for (col, &value) in data.iter_mut().zip(stored_values.intermediates()) {
+            col.add(value)
+        }
+    }
+
+    data
 }
 
 pub fn simple_checksum<I: AsRef<[u8]>>(input: I) -> u64 {
@@ -257,21 +310,23 @@ impl Env {
 // Evaluates the expression, storing the intermediate results
 // in inorder and ignoring the variables
 struct LplIntermediateEval<'a> {
-    tree: &'a SyntaxTree,
+    node: &'a ExpressionNode,
+    env: &'a Env,
     results: Vec<BooleanValue>,
 }
 
 impl<'a> LplIntermediateEval<'a> {
-    pub fn new(tree: &'a SyntaxTree) -> Self {
-        let values = tree.degree();
+    pub fn new(node: &'a ExpressionNode, env: &'a Env) -> Self {
+        let values = node.degree();
         Self {
-            tree,
+            node,
+            env,
             results: vec![BooleanValue::False; values],
         }
     }
 
     pub fn eval(&mut self, inputs: &[BooleanValue]) -> BooleanValue {
-        let (final_result, _) = self.intermediate_eval(self.tree.root(), inputs, 0);
+        let (final_result, _) = self.intermediate_eval(self.node, inputs, 0);
         final_result
     }
 
@@ -300,7 +355,7 @@ impl<'a> LplIntermediateEval<'a> {
                 self.results[store_idx] = result;
                 (result, next_store_idx)
             }
-            ExpressionNode::Var(_) => (node.eval(self.tree.env(), inputs), store_idx),
+            ExpressionNode::Var(_) => (node.eval(self.env, inputs), store_idx),
         }
     }
 }
