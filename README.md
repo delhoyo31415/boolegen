@@ -6,6 +6,7 @@
 [LPL Boole](https://www.gradegrinder.net/images/static-page-img/Boole-main-linux.png) is a program used to practice writing [truth tables](https://en.wikipedia.org/wiki/Truth_table). It allows you to write the value of subexpressions of the main expression so that you can more easily calculate the final value of it. It also checks whether the truth values you have typed are indeed the correct ones.
 However, for medium sized expressions with more than three variables this task can become quite tedious.
 
+⚠️Warning: This has only been tested with the version of LPL Boole I was given (4.0.0), so if you try to load the file with another version it might fail.
 
 # Usage
 ```
@@ -16,17 +17,27 @@ USAGE:
     boolegen [OPTIONS] <EXPRESSION> [OUTPUT]
 
 ARGS:
-    <EXPRESSION>    The boolean expression for which you want to generate a truth table
-    <OUTPUT>        Output filename
+    <EXPRESSION>
+            The boolean expression for which you want to generate a truth table
+
+    <OUTPUT>
+            Output filename
 
 OPTIONS:
-    -h, --help              Print help information
-    -s, --subexpressions    Show subexpressions in different columns
-    -t, --transform         Modify the AST of the expression to get an equivalent one using the
-                            associative property of AND and OR binary operators, resulting in a
-                            expression with less parenthesis
+    -h, --help
+            Print help information
 
+    -s, --subexpressions <MIN_DEGREE>
+            Show subexpressions in different columns with a degree of at least <MIN_DEGREE>
+
+            In case the given number is greater than the degree of the main expression then only the
+            main expression will be written
+
+    -t, --transform
+            Modify the AST of the expression to get an equivalent one using the associative property
+            of AND and OR binary operators, resulting in a expression with less parenthesis
 ```
+
 ## Expression format
 These are the operators currently accepted by `boolegen` and its representation
 | Boolean operator | Logical symbol |`boolegen` representation |
@@ -42,7 +53,7 @@ A sequence of alphabetic ascii characters is understood as a variable name.
 The variables must start with capital letters because that is the format that LPL Boole accepts. Otherwise, `boolegen`'s generator will reject the expression. 
 
 ### Operator precedence and associativity
-In logic, there does not exist consensus about the precedence and associativity of logical operators. The rules implemented for `boolegen` are the ones I used in my logic course. This is the table the of precedences
+In logic, there does not exist consensus about the precedence and associativity of logical operators. The rules implemented for `boolegen` are the ones I used in my logic course. This is the table of precedences
 |Operator| Precedence|
 |:--------:|:--------:|
 |`->`, `<->` | 1 |
@@ -83,7 +94,15 @@ A   B
 which corresponds to the string `A & B & C`. This is what `boolgen` does when you give the `-t` flag. As you can see, applying this transformation reduces the number of parenthesis. However, I can't just print the first AST as if it represented the second expression because, in that case, LPL Boole would generate the second AST. Since the AST `boolegen` has is different than the one from LPL Boole, the value for **the subexpressions may be different** even though the value for the main expressions are guaranteed to be the same.
 
 ## Example
-`boolegen -t "A & B -> C" expr.tt`
+- This will generate a LPL Boole file with the maximuma amount of parenthesis removed because of the `-t` flag.
+```
+boolegen "A -> B & C & (D <-> ~(E | F) & A & P)" expr.tt -t
+```
+
+- This is the same as above except that only those subexpression with a degree (number of operators) of at least 3 will be written to the file. Notice that the previous statements includes the main expression.
+```
+boolegen "A -> B & C & (D <-> ~(E | F) & A & P)" expr.tt -t -s 3
+```
 
 # Build
 You need a Rust installation in your system. Once installed, use `cargo` to compile it
@@ -93,7 +112,7 @@ $ cd boolegen
 $ cargo build --release
 ```
 
-The executable will be located in target/release/boolegen.
+The executable will be located in `target/release/boolegen`.
 
 # Objectives
 - [X] Generate file which can be correctly read by LPL Boole
