@@ -23,7 +23,7 @@ use crate::{
 
 pub struct LpLBooleGeneratorBuilder {
     capacity: usize,
-    write_subexpressions: bool,
+    write_subexpressions: Option<u32>,
 }
 
 impl LpLBooleGeneratorBuilder {
@@ -31,8 +31,8 @@ impl LpLBooleGeneratorBuilder {
         Self::default()
     }
 
-    pub fn write_subexpressions(&mut self, write_subexpressions: bool) -> &mut Self {
-        self.write_subexpressions = write_subexpressions;
+    pub fn write_subexpressions(&mut self, minimum_degree: Option<u32>) -> &mut Self {
+        self.write_subexpressions = minimum_degree;
         self
     }
 
@@ -54,14 +54,14 @@ impl Default for LpLBooleGeneratorBuilder {
         // A default capacity of 4KB
         Self {
             capacity: 4 * 1024,
-            write_subexpressions: false,
+            write_subexpressions: None,
         }
     }
 }
 
 pub struct LplBooleGenerator<'a> {
     syntax_tree: &'a SyntaxTree,
-    write_subexpressions: bool,
+    write_subexpressions: Option<u32>,
     output: String,
 }
 
@@ -178,9 +178,11 @@ impl<'a> LplBooleGenerator<'a> {
         // The env is the same for the subexpressions
         let env = self.syntax_tree.env();
 
-        if self.write_subexpressions {
+        if let Some(min_degree) = self.write_subexpressions {
+            let min_degree = self.syntax_tree.degree().min(min_degree as usize);
+
             for node in self.syntax_tree.postorder_traversal() {
-                if node.is_var() {
+                if node.is_var() || node.degree() < min_degree {
                     continue;
                 }
 
@@ -188,6 +190,8 @@ impl<'a> LplBooleGenerator<'a> {
                 self.write_answer_column(node.lpl_formatted().as_str(), &cols);
                 self.output += ",";
             }
+            // This won't remove a character which is not a ',' because it is guarenteed that the last
+            // character is that one
             self.output.pop();
         } else {
             let cols = generate_subcolumn_data(self.syntax_tree.root(), env);

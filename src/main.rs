@@ -15,10 +15,7 @@
 
 use std::{fs, path::PathBuf};
 
-use boolegen::{
-    filegen::{LpLBooleGeneratorBuilder, LplBooleGenerator},
-    parser::SyntaxTree,
-};
+use boolegen::{filegen::LpLBooleGeneratorBuilder, parser::SyntaxTree};
 use clap::Parser;
 
 use anyhow::{Context, Result};
@@ -34,9 +31,12 @@ struct Cli {
     /// resulting in a expression with less parenthesis
     #[clap(short, long)]
     transform: bool,
-    /// Show subexpressions in different columns
-    #[clap(short, long)]
-    subexpressions: bool,
+    /// Show subexpressions in different columns with a degree of at least <MIN_DEGREE>
+    ///
+    /// In case the given number is greater than the degree of the main expression then
+    /// only the main expression will be written
+    #[clap(short, long, value_name = "MIN_DEGREE")]
+    subexpressions: Option<u32>,
 }
 
 fn main() -> Result<()> {
