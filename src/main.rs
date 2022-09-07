@@ -15,7 +15,10 @@
 
 use std::{fs, path::PathBuf};
 
-use boolegen::{filegen::LplBooleGenerator, parser::SyntaxTree};
+use boolegen::{
+    filegen::{LpLBooleGeneratorBuilder, LplBooleGenerator},
+    parser::SyntaxTree,
+};
 use clap::Parser;
 
 use anyhow::{Context, Result};
@@ -31,6 +34,9 @@ struct Cli {
     /// resulting in a expression with less parenthesis
     #[clap(short, long)]
     transform: bool,
+    /// Show subexpressions in different columns
+    #[clap(short, long)]
+    subexpressions: bool,
 }
 
 fn main() -> Result<()> {
@@ -41,8 +47,10 @@ fn main() -> Result<()> {
         tree.transform_equivalent();
     }
 
-    let lpl_output = LplBooleGenerator::new(&tree)
-        .context("Invalid expression for LPL file")?
+    let lpl_output = LpLBooleGeneratorBuilder::new()
+        .write_subexpressions(cli.subexpressions)
+        .build(&tree)
+        .context("Invalid expression for LPL File")?
         .into_string();
 
     let output_name = cli.output.unwrap_or_else(|| "truth_table.tt".into());
