@@ -104,6 +104,7 @@ impl ExpressionNode {
         PreorderTraversal { stack: vec![self] }
     }
 
+    // THINK: should I store this property in the node itself?
     pub fn degree(&self) -> usize {
         self.preorder_traversal()
             .filter(|&node| !node.is_var())
