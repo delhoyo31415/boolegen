@@ -20,10 +20,12 @@ ARGS:
     <OUTPUT>        Output filename
 
 OPTIONS:
-    -h, --help         Print help information
-    -t, --transform    Modify the AST of the expression to get an equivalent one using the
-                       associative property of AND and OR binary operators, resulting in a
-                       expression with less parenthesis
+    -h, --help              Print help information
+    -s, --subexpressions    Show subexpressions in different columns
+    -t, --transform         Modify the AST of the expression to get an equivalent one using the
+                            associative property of AND and OR binary operators, resulting in a
+                            expression with less parenthesis
+
 ```
 ## Expression format
 These are the operators currently accepted by `boolegen` and its representation
@@ -52,6 +54,8 @@ Given the expression `A α B β C`, where `α` and `β` are binary operators:
 - If the precedence of `α` and `β` is the same then
     - If `α` = `β` (i.e, they are the same operator) and it is associative, then the expression is parsed as `(A α B) β C`
     - In any other case, the above expression is rejected for being ambiguous.
+
+LPL Boole forces you to write more parenthesis but you only have to have in mind the rules stated above because `boolegen` will parenthesize the expression as needed by the program.
 
 ### Examples
 - `A & B & C -> C | E` is a valid expression
@@ -93,7 +97,7 @@ The executable will be located in target/release/boolegen.
 
 # Objectives
 - [X] Generate file which can be correctly read by LPL Boole
-- [ ] Show each subexpression in different columns
+- [X] Show each subexpression in different columns
 - [ ] Write several expressions to the same file, not just one
 - [ ] Add a simple GUI, preferably built with [iced](https://github.com/iced-rs/iced)
 
