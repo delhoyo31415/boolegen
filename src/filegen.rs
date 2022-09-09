@@ -22,8 +22,12 @@ use crate::{
 };
 
 pub struct LpLBooleGeneratorBuilder {
+    // Buffer capacity
     capacity: usize,
+    // If it is not None, write the subexpressions with at least a given degree
     write_subexpressions: Option<u32>,
+    // Time spent since the file was open and saved, in seconds
+    seconds_spent: u32,
 }
 
 impl LpLBooleGeneratorBuilder {
@@ -33,6 +37,20 @@ impl LpLBooleGeneratorBuilder {
 
     pub fn write_subexpressions(&mut self, minimum_degree: Option<u32>) -> &mut Self {
         self.write_subexpressions = minimum_degree;
+        self
+    }
+
+    pub fn random_open_time(&mut self, min: u32, max: u32) -> &mut Self {
+        use rand::Rng;
+        if max < min {
+            panic!("lower bound cannot be higher than upper bound");
+        }
+        self.seconds_spent = rand::thread_rng().gen_range(min..=max);
+        self
+    }
+
+    pub fn open_time(&mut self, seconds_spent: u32) -> &mut Self {
+        self.seconds_spent = seconds_spent;
         self
     }
 
@@ -55,6 +73,7 @@ impl Default for LpLBooleGeneratorBuilder {
         Self {
             capacity: 4 * 1024,
             write_subexpressions: None,
+            seconds_spent: 3 * 60 + 17,
         }
     }
 }
@@ -62,6 +81,7 @@ impl Default for LpLBooleGeneratorBuilder {
 pub struct LplBooleGenerator<'a> {
     syntax_tree: &'a SyntaxTree,
     write_subexpressions: Option<u32>,
+    time_spent: u32,
     output: String,
 }
 
@@ -75,6 +95,7 @@ impl<'a> LplBooleGenerator<'a> {
                 syntax_tree,
                 output: String::with_capacity(builder.capacity),
                 write_subexpressions: builder.write_subexpressions,
+                time_spent: builder.seconds_spent,
             })
         } else {
             Err(FileGeneratorError::InvalidExpression(
@@ -97,8 +118,7 @@ impl<'a> LplBooleGenerator<'a> {
             .as_millis();
 
         // Timestamp when the file is saved
-        // TODO: this should be randomized or chosen by the user
-        let close_timestamp = open_timestamp + 3 * 60 + 17;
+        let close_timestamp = open_timestamp + self.time_spent as u128;
 
         self.output += open_timestamp.to_string().as_str();
         self.output += "D";
@@ -129,7 +149,6 @@ impl<'a> LplBooleGenerator<'a> {
         for (idx, name) in self.syntax_tree.env().names_iter().enumerate() {
             let values = bool_iter.next_variation().unwrap();
 
-            // TODO: ensure the name of the variable is allowed by LPL Boole
             self.write_generated_column(values, name);
 
             if idx != count - 1 {

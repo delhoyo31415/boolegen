@@ -18,7 +18,7 @@ use std::{fs, path::PathBuf};
 use boolegen::{filegen::LpLBooleGeneratorBuilder, parser::SyntaxTree};
 use clap::Parser;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 #[derive(Debug, Parser)]
 /// Generate a truth table for a given expression and outputs a file compatible with LPL Boole
@@ -37,6 +37,10 @@ struct Cli {
     /// only the main expression will be written
     #[clap(short, long, value_name = "MIN_DEGREE")]
     subexpressions: Option<u32>,
+    #[clap(short = 'd', long = "duration", min_values = 1, max_values = 2)]
+    /// The time spent (in seconds) with the LPL Boole file open. If two arguments are given, then this quantity
+    /// will be a number chosen randomly between the given numbers
+    seconds_spent: Vec<u32>,
 }
 
 fn main() -> Result<()> {
@@ -47,8 +51,22 @@ fn main() -> Result<()> {
         tree.transform_equivalent();
     }
 
-    let lpl_output = LpLBooleGeneratorBuilder::new()
-        .write_subexpressions(cli.subexpressions)
+    let mut generator = LpLBooleGeneratorBuilder::new();
+    generator.write_subexpressions(cli.subexpressions);
+
+    if cli.seconds_spent.len() == 1 {
+        generator.open_time(cli.seconds_spent[0]);
+    } else if cli.seconds_spent.len() == 2 {
+        let min = cli.seconds_spent[0];
+        let max = cli.seconds_spent[1];
+
+        if min > max {
+            bail!("Lower bound for time cannot be greater than upper bound")
+        }
+        generator.random_open_time(min, max);
+    }
+
+    let lpl_output = generator
         .build(&tree)
         .context("Invalid expression for LPL File")?
         .into_string();
