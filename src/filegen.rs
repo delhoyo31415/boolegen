@@ -146,7 +146,7 @@ impl<'a> LplBooleGenerator<'a> {
         let count = self.syntax_tree.env().var_count();
         let mut bool_iter = ColumnsBooleanVariations::reversed(count);
 
-        for (idx, name) in self.syntax_tree.env().names_iter().enumerate() {
+        for (idx, name) in self.syntax_tree.env().names().enumerate() {
             let values = bool_iter.next_variation().unwrap();
 
             self.write_generated_column(values, name);
@@ -319,7 +319,7 @@ impl Env {
     fn can_be_lpl_encoded(&self) -> bool {
         // LPL boole only accepts as a variable a string which is
         // alphabetic and whose first letter start is capitalized is capitalized
-        self.names_iter().all(|name| {
+        self.names().all(|name| {
             let mut chars = name.chars();
             if let Some(first_letter) = chars.next() {
                 first_letter.is_ascii_uppercase() && chars.all(char::is_alphabetic)
