@@ -22,8 +22,7 @@ use crate::{
 };
 
 pub struct LpLBooleGeneratorBuilder {
-    // Buffer capacity
-    capacity: usize,
+    buffer_capacity: usize,
     // If it is not None, write the subexpressions with at least a given degree
     write_subexpressions: Option<u32>,
     // Time spent since the file was open and saved, in seconds
@@ -54,16 +53,16 @@ impl LpLBooleGeneratorBuilder {
         self
     }
 
-    pub fn with_capacity(&mut self, capacity: usize) -> &mut Self {
-        self.capacity = capacity;
+    pub fn with_capacity(&mut self, buffer_capacity: usize) -> &mut Self {
+        self.buffer_capacity = buffer_capacity;
         self
     }
 
     pub fn build<'a>(
         &self,
-        tree: &'a SyntaxTree,
+        trees: &'a [SyntaxTree],
     ) -> Result<LplBooleGenerator<'a>, FileGeneratorError> {
-        LplBooleGenerator::from_builder(self, tree)
+        LplBooleGenerator::from_builder(self, trees)
     }
 }
 
@@ -71,7 +70,7 @@ impl Default for LpLBooleGeneratorBuilder {
     fn default() -> Self {
         // A default capacity of 4KB
         Self {
-            capacity: 4 * 1024,
+            buffer_capacity: 4 * 1024,
             write_subexpressions: None,
             seconds_spent: 3 * 60 + 17,
         }
@@ -79,21 +78,27 @@ impl Default for LpLBooleGeneratorBuilder {
 }
 
 pub struct LplBooleGenerator<'a> {
-    syntax_tree: &'a SyntaxTree,
+    trees: &'a [SyntaxTree],
+    buffer_capacity: usize,
     write_subexpressions: Option<u32>,
     time_spent: u32,
-    output: String,
+    // In case there is just one syntax tree, allocating for the env is wasteful
+    // Should I change it so that this type is Cow?
+    env: Env,
 }
 
 impl<'a> LplBooleGenerator<'a> {
     fn from_builder(
         builder: &LpLBooleGeneratorBuilder,
-        syntax_tree: &'a SyntaxTree,
+        trees: &'a [SyntaxTree],
     ) -> Result<Self, FileGeneratorError> {
-        if syntax_tree.env().can_be_lpl_encoded() {
+        let env = Env::merged(trees.iter().map(SyntaxTree::env));
+
+        if env.can_be_lpl_encoded() {
             Ok(Self {
-                syntax_tree,
-                output: String::with_capacity(builder.capacity),
+                trees,
+                env,
+                buffer_capacity: builder.buffer_capacity,
                 write_subexpressions: builder.write_subexpressions,
                 time_spent: builder.seconds_spent,
             })
@@ -104,12 +109,12 @@ impl<'a> LplBooleGenerator<'a> {
         }
     }
 
-    pub fn new(syntax_tree: &'a SyntaxTree) -> Result<Self, FileGeneratorError> {
-        LpLBooleGeneratorBuilder::new().build(&syntax_tree)
+    pub fn new(trees: &'a [SyntaxTree]) -> Result<Self, FileGeneratorError> {
+        LpLBooleGeneratorBuilder::new().build(trees)
     }
 
-    fn write_headers(&mut self) {
-        self.output += "4.0.0.22673\rwnds:Windows 76.1\rBleF\rC";
+    fn write_headers(&self, output: &mut String) {
+        output.push_str("4.0.0.22673\rwnds:Windows 76.1\rBleF\rC");
 
         // Timestamp when LPL Boole was opened
         let open_timestamp = SystemTime::now()
@@ -120,153 +125,170 @@ impl<'a> LplBooleGenerator<'a> {
         // Timestamp when the file is saved
         let close_timestamp = open_timestamp + self.time_spent as u128;
 
-        self.output += open_timestamp.to_string().as_str();
-        self.output += "D";
-        self.output += close_timestamp.to_string().as_str();
-        self.output += "\rnewFormat\r"
+        output.push_str(open_timestamp.to_string().as_str());
+        output.push('D');
+        output.push_str(close_timestamp.to_string().as_str());
+        output.push_str("\rnewFormat\r");
     }
 
-    fn write_generated_column(&mut self, values: &[BooleanValue], name: &str) {
-        self.output += "openproof.boole.BooleExpressionData=openproof.boole.BooleExpressionData{";
-        self.output += "_fLabelNum=0;_fLabelText=\"\";_fByBoole=true;";
-        self.output +=
-            "_fTruthColumnExist:1[openproof.boole.TruthColumnData=openproof.boole.TruthColumnData{";
-        self.output += "v=\"";
-        self.output
-            .extend(values.iter().map(BooleanValue::lpl_boole_encoded));
-        self.output += "\\000\";_fCharIndex=0;_fByBoole=true;";
-        self.output += "}"; // TruthColumnData
-        self.output += "]_fExpression="; // TruthColumnExist
-        self.output += name;
-        self.output += ";_fStatusColumn@o()";
-        self.output += "}"; // BooleExpressionData
+    fn write_generated_column(&self, output: &mut String, values: &[BooleanValue], name: &str) {
+        output.push_str("openproof.boole.BooleExpressionData=openproof.boole.BooleExpressionData{");
+        output.push_str("_fLabelNum=0;_fLabelText=\"\";_fByBoole=true;");
+        output.push_str(
+            "_fTruthColumnExist:1[openproof.boole.TruthColumnData=openproof.boole.TruthColumnData{",
+        );
+        output.push_str("v=\"");
+        output.extend(values.iter().map(BooleanValue::lpl_boole_encoded));
+        output.push_str("\\000\";_fCharIndex=0;_fByBoole=true;");
+        output.push('}'); // TruthColumnData
+        output.push_str("]_fExpression="); // TruthColumnExist
+        output.push_str(name);
+        output.push_str(";_fStatusColumn@o()");
+        output.push('}'); // BooleExpressionData
     }
 
-    fn write_generated_columns(&mut self) {
-        let count = self.syntax_tree.env().var_count();
+    fn write_generated_columns(&self, output: &mut String) {
+        let count = self.env.var_count();
         let mut bool_iter = ColumnsBooleanVariations::reversed(count);
 
-        for (idx, name) in self.syntax_tree.env().names_iter().enumerate() {
+        for (idx, name) in self.env.names().enumerate() {
             let values = bool_iter.next_variation().unwrap();
 
-            self.write_generated_column(values, name);
+            self.write_generated_column(output, values, name);
 
             if idx != count - 1 {
-                self.output += ",";
+                output.push(',');
             }
         }
     }
 
-    fn write_checksums(&mut self) {
-        let checksum = simple_checksum(&self.output).to_string();
-        self.output += "c=";
-        self.output += &checksum;
-        self.output += ";\r";
+    fn write_checksums(&self, output: &mut String) {
+        let checksum = simple_checksum(&output).to_string();
+        output.push_str("c=");
+        output.push_str(&checksum);
+        output.push_str(";\r");
 
-        let checksum = circle_shift_checksum(&self.output).to_string();
-        self.output += "s=";
-        self.output += &checksum;
-        self.output += ";";
+        let checksum = circle_shift_checksum(&output).to_string();
+        output.push_str("s=");
+        output.push_str(&checksum);
+        output.push(';');
     }
 
-    fn write_subcolumns(&mut self, subcols_data: &[SubColumnData]) {
-        self.output += "_fTruthColumnExist:";
-        self.output += subcols_data.len().to_string().as_str();
-        self.output += "[";
+    fn write_subcolumns(&self, output: &mut String, subcols_data: &[SubColumnData]) {
+        output.push_str("_fTruthColumnExist:");
+        output.push_str(subcols_data.len().to_string().as_str());
+        output.push('[');
+
         for (idx, data) in subcols_data.iter().enumerate() {
-            data.write(&mut self.output);
+            data.write(output);
             if idx != subcols_data.len() - 1 {
-                self.output += ",";
+                output.push(',');
             }
         }
-        self.output += "]";
+        output.push(']');
     }
 
-    fn write_answer_column(&mut self, expr: &str, subcols_data: &[SubColumnData]) {
-        self.output += "openproof.boole.BooleExpressionData=openproof.boole.BooleExpressionData{";
-        self.output += "_fLabelNum=0;_fLabelText=\"\";_fByBoole=false;";
-        self.write_subcolumns(subcols_data);
-        self.output += "_fExpression=\"";
-        self.output += expr;
-        self.output += "\";";
-        self.write_status_column(1 << self.syntax_tree.env().var_count());
-        self.output += "}";
+    fn write_answer_column(&self, output: &mut String, expr: &str, subcols_data: &[SubColumnData]) {
+        output.push_str("openproof.boole.BooleExpressionData=openproof.boole.BooleExpressionData{");
+        output.push_str("_fLabelNum=0;_fLabelText=\"\";_fByBoole=false;");
+
+        self.write_subcolumns(output, subcols_data);
+
+        output.push_str("_fExpression=\"");
+        output.push_str(expr);
+        output.push_str("\";");
+
+        self.write_status_column(output, 1 << self.env.var_count());
+
+        output.push('}');
     }
 
-    fn write_answer_columns(&mut self) {
-        // The env is the same for the subexpressions
-        let env = self.syntax_tree.env();
-
+    fn write_answer_columns(&self, output: &mut String) {
         if let Some(min_degree) = self.write_subexpressions {
-            let min_degree = self.syntax_tree.degree().min(min_degree as usize);
+            for tree in self.trees {
+                let min_degree = tree.degree().min(min_degree as usize);
 
-            for node in self.syntax_tree.postorder_traversal() {
-                if node.is_var() || node.degree() < min_degree {
-                    continue;
+                for node in tree.postorder_traversal() {
+                    if node.is_var() || node.degree() < min_degree {
+                        continue;
+                    }
+
+                    let cols = generate_subcolumn_data(node, &self.env);
+                    self.write_answer_column(output, node.lpl_formatted().as_str(), &cols);
+                    output.push(',');
                 }
-
-                let cols = generate_subcolumn_data(node, env);
-                self.write_answer_column(node.lpl_formatted().as_str(), &cols);
-                self.output += ",";
             }
             // This won't remove a character which is not a ',' because it is guarenteed that the last
             // character is that one
-            self.output.pop();
+            output.pop();
         } else {
-            let cols = generate_subcolumn_data(self.syntax_tree.root(), env);
-            self.write_answer_column(self.syntax_tree.lpl_formatted().as_str(), &cols);
+            for tree in self.trees {
+                self.write_columns_for_node(output, tree.root());
+                output.push(',');
+            }
+            output.pop();
         }
     }
 
-    fn write_truth_table_row_status(&mut self, is_corrected: bool, num: usize) {
+    fn write_columns_for_node(&self, output: &mut String, node: &ExpressionNode) {
+        let cols = generate_subcolumn_data(node, &self.env);
+        self.write_answer_column(output, &node.lpl_formatted(), &cols);
+    }
+
+    fn write_truth_table_row_status(&self, output: &mut String, is_corrected: bool, num: usize) {
         let c_value = u32::from(is_corrected).to_string();
 
-        self.output += "openproof.boole.status.TruthTableRowStatus=openproof.boole.status.TruthTableRowStatus{";
-        self.output += "c=";
-        self.output += &c_value;
-        self.output += ";s=\"\";l=\"\";d@k=\"\";t=false;r=";
-        self.output += num.to_string().as_str();
-        self.output += ";}";
+        output.push_str("openproof.boole.status.TruthTableRowStatus=openproof.boole.status.TruthTableRowStatus{");
+        output.push_str("c=");
+        output.push_str(&c_value);
+        output.push_str(";s=\"\";l=\"\";d@k=\"\";t=false;r=");
+        output.push_str(num.to_string().as_str());
+        output.push_str(";}");
     }
 
-    fn write_status_column(&mut self, num_columns: usize) {
-        self.output += "_fStatusColumn(";
+    fn write_status_column(&self, output: &mut String, num_columns: usize) {
+        output.push_str("_fStatusColumn(");
         for num in 0..num_columns {
-            self.write_truth_table_row_status(true, num);
-            self.output += ",";
+            self.write_truth_table_row_status(output, true, num);
+            output.push(',');
         }
-        self.write_truth_table_row_status(false, num_columns);
-        self.output += ")o()";
+        self.write_truth_table_row_status(output, false, num_columns);
+        output.push_str(")o()");
     }
 
-    fn write_all(&mut self) {
-        self.write_headers();
+    fn write_all(&self, output: &mut String) {
+        self.write_headers(output);
 
-        self.output += "=openproof.zen.Openproof{";
-        self.output += "p=openproof.boole.Boole{";
-        self.output += "_fAssessmentData=openproof.boole.entities.AssessmentData{";
-        self.output += "_fTitle=@;_fRefData=openproof.boole.entities.ExpressionPanelData{";
-        self.output += "_fExpVector(";
-        self.write_generated_columns();
-        self.output += ")_fIsReferenceSide=true;"; // fExpVector;
-        self.output += "}"; // RefData=ExpressionPanelData
-        self.output += "_fSentData=openproof.boole.entities.ExpressionPanelData{";
-        self.output += "_fExpVector(";
-        self.write_answer_columns();
-        self.output += ")_fIsReferenceSide=false;"; // fExpVector
-        self.output += "}"; // SentData=ExpressionPanelData
-        self.output += "_fIsTaut=@;_fIsTTPossible=@;_fAreTautEquiv=@;_fIsLastSentenceTautCon=@;";
-        self.output += "_fIsFirstSentenceTautCon=@;_fNeedToBeComplete=@;isContra=@;isTTContra=@;";
-        self.output += "}"; // _fAssessmentData=openproof.boole.entities.AssessmentData{
-        self.output += "}"; // p=openproof.boole.Boole{
-        self.output += "}"; //=openproof.zen.Openproof
+        output.push_str("=openproof.zen.Openproof{");
+        output.push_str("p=openproof.boole.Boole{");
+        output.push_str("_fAssessmentData=openproof.boole.entities.AssessmentData{");
+        output.push_str("_fTitle=@;_fRefData=openproof.boole.entities.ExpressionPanelData{");
+        output.push_str("_fExpVector(");
 
-        self.write_checksums();
+        self.write_generated_columns(output);
+
+        output.push_str(")_fIsReferenceSide=true;"); // fExpVector;
+        output.push('}'); // RefData=ExpressionPanelData
+        output.push_str("_fSentData=openproof.boole.entities.ExpressionPanelData{");
+        output.push_str("_fExpVector(");
+
+        self.write_answer_columns(output);
+
+        output.push_str(")_fIsReferenceSide=false;"); // fExpVector
+        output.push('}'); // SentData=ExpressionPanelData
+        output.push_str("_fIsTaut=@;_fIsTTPossible=@;_fAreTautEquiv=@;_fIsLastSentenceTautCon=@;");
+        output.push_str("_fIsFirstSentenceTautCon=@;_fNeedToBeComplete=@;isContra=@;isTTContra=@;");
+        output.push('}'); // _fAssessmentData=openproof.boole.entities.AssessmentData{
+        output.push('}'); // p=openproof.boole.Boole{
+        output.push('}'); //=openproof.zen.Openproof
+
+        self.write_checksums(output);
     }
 
-    pub fn into_string(mut self) -> String {
-        self.write_all();
-        self.output
+    pub fn into_string(self) -> String {
+        let mut output = String::with_capacity(self.buffer_capacity);
+        self.write_all(&mut output);
+        output
     }
 }
 
@@ -319,7 +341,7 @@ impl Env {
     fn can_be_lpl_encoded(&self) -> bool {
         // LPL boole only accepts as a variable a string which is
         // alphabetic and whose first letter start is capitalized is capitalized
-        self.names_iter().all(|name| {
+        self.names().all(|name| {
             let mut chars = name.chars();
             if let Some(first_letter) = chars.next() {
                 first_letter.is_ascii_uppercase() && chars.all(char::is_alphabetic)
@@ -421,12 +443,6 @@ impl ExpressionNode {
     }
 }
 
-impl SyntaxTree {
-    fn lpl_formatted(&self) -> String {
-        self.root().lpl_formatted()
-    }
-}
-
 impl BinaryOperator {
     fn lpl_boole_encoded(&self) -> &'static str {
         match self {
@@ -455,11 +471,11 @@ impl SubColumnData {
     }
 
     pub fn write(&self, output: &mut String) {
-        *output += "openproof.boole.TruthColumnData=openproof.boole.TruthColumnData{";
-        *output += "v=\"";
+        output.push_str("openproof.boole.TruthColumnData=openproof.boole.TruthColumnData{");
+        output.push_str("v=\"");
         output.extend(self.values.iter().map(BooleanValue::lpl_boole_encoded));
-        *output += "\\000\";_fCharIndex=0;_fByBoole=false;";
-        *output += "}";
+        output.push_str("\\000\";_fCharIndex=0;_fByBoole=false;");
+        output.push('}');
     }
 }
 

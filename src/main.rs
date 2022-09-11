@@ -23,9 +23,11 @@ use anyhow::{bail, Context, Result};
 #[derive(Debug, Parser)]
 /// Generate a truth table for a given expression and outputs a file compatible with LPL Boole
 struct Cli {
-    /// The boolean expression for which you want to generate a truth table    
-    expression: String,
+    /// The boolean expressions for which you want to generate a truth table
+    #[clap(required = true, min_values = 1)]
+    expressions: Vec<String>,
     /// Output filename
+    #[clap(short, long)]
     output: Option<PathBuf>,
     /// Modify the AST of the expression to get an equivalent one using the associative property of AND and OR binary operators,
     /// resulting in a expression with less parenthesis
@@ -37,7 +39,7 @@ struct Cli {
     /// only the main expression will be written
     #[clap(short, long, value_name = "MIN_DEGREE")]
     subexpressions: Option<u32>,
-    #[clap(short = 'd', long = "duration", min_values = 1, max_values = 2)]
+    #[clap(short = 'd', long = "duration", max_values = 2)]
     /// The time spent (in seconds) with the LPL Boole file open. If two arguments are given, then this quantity
     /// will be a number chosen randomly between the given numbers
     seconds_spent: Vec<u32>,
@@ -46,9 +48,17 @@ struct Cli {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let mut tree: SyntaxTree = cli.expression.parse().context("Invalid expression")?;
+    let mut trees = cli
+        .expressions
+        .into_iter()
+        .map(|expr| {
+            expr.parse::<SyntaxTree>()
+                .with_context(|| format!("Invalid expression '{}'", expr))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     if cli.transform {
-        tree.transform_equivalent();
+        trees.iter_mut().for_each(SyntaxTree::transform_equivalent);
     }
 
     let mut generator = LpLBooleGeneratorBuilder::new();
@@ -67,12 +77,12 @@ fn main() -> Result<()> {
     }
 
     let lpl_output = generator
-        .build(&tree)
+        .build(&trees)
         .context("Invalid expression for LPL File")?
         .into_string();
 
     let output_name = cli.output.unwrap_or_else(|| "truth_table.tt".into());
-    fs::write(&output_name, lpl_output)
+    fs::write(&output_name, &lpl_output)
         .with_context(|| format!("Could not write contents to '{}'", output_name.display()))?;
 
     Ok(())

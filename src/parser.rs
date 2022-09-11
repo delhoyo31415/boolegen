@@ -347,6 +347,29 @@ impl Env {
         env
     }
 
+    // Creates a new env containing all the variables
+    // in the given iterator of envs
+    pub fn merged<'a, I>(envs: I) -> Env
+    where
+        I: IntoIterator<Item = &'a Env>,
+    {
+        let mut new_env = Env::new();
+        for env in envs {
+            new_env.add_all(env.names())
+        }
+        new_env
+    }
+
+    pub fn add_all<I, T>(&mut self, vars: I)
+    where
+        I: IntoIterator<Item = T>,
+        T: AsRef<str>,
+    {
+        for var in vars {
+            self.add(var.as_ref().into())
+        }
+    }
+
     pub fn var_count(&self) -> usize {
         self.names.len()
     }
@@ -369,8 +392,8 @@ impl Env {
         self.names.get(position).map(|name| name.as_ref())
     }
 
-    pub fn names_iter(&self) -> impl Iterator<Item = &str> {
-        self.names.iter().map(|name| name.as_ref())
+    pub fn names(&self) -> impl Iterator<Item = &Rc<str>> {
+        self.names.iter()
     }
 }
 
@@ -545,7 +568,10 @@ mod tests {
 
         assert_eq!(env.var_count(), 3);
         assert_eq!(env.get_name(1).unwrap(), "b");
-        assert_eq!(env.names_iter().collect::<Vec<_>>(), vec!["a", "b", "c"]);
+        assert_eq!(
+            env.names().map(AsRef::as_ref).collect::<Vec<_>>(),
+            vec!["a", "b", "c"]
+        );
     }
 
     #[test]
@@ -598,5 +624,27 @@ mod tests {
         assert_eq!(postorder.next().unwrap().to_string(), "c | ~d");
         assert_eq!(postorder.next().unwrap().to_string(), "a & b -> c | ~d");
         assert_eq!(postorder.next(), None);
+    }
+
+    #[test]
+    fn test_merge_envs() {
+        let mut first = Env::new();
+        first.add_all(&["first", "second"]);
+        first.add_all(&["third", "second", "third"]);
+
+        assert_eq!(
+            first.names().map(AsRef::as_ref).collect::<Vec<_>>(),
+            &["first", "second", "third"]
+        );
+
+        let mut second = Env::new();
+        second.add_all(&["fourth", "fifth", "fourth"]);
+
+        let merged = Env::merged(&[first, second]);
+
+        assert_eq!(
+            merged.names().map(AsRef::as_ref).collect::<Vec<_>>(),
+            &["first", "second", "third", "fourth", "fifth"]
+        );
     }
 }
