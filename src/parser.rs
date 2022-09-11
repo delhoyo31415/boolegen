@@ -13,9 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::{
-    cmp::Ordering, collections::HashMap, fmt::Display, iter::FromIterator, rc::Rc, str::FromStr,
-};
+use std::{cmp::Ordering, collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
 
 use crate::{
     boolean_value::BooleanValue,
@@ -349,6 +347,19 @@ impl Env {
         env
     }
 
+    // Creates a new env containing all the variables
+    // in the given iterator of envs
+    pub fn merged<'a, I>(envs: I) -> Env
+    where
+        I: IntoIterator<Item = &'a Env>,
+    {
+        let mut new_env = Env::new();
+        for env in envs {
+            new_env.add_all(env.names())
+        }
+        new_env
+    }
+
     pub fn add_all<I, T>(&mut self, vars: I)
     where
         I: IntoIterator<Item = T>,
@@ -384,19 +395,6 @@ impl Env {
     pub fn names(&self) -> impl Iterator<Item = &Rc<str>> {
         self.names.iter()
     }
-}
-
-// Creates a new env containing all the variables
-// in the given iterator of envs
-pub fn merge_envs<'a, I>(envs: I) -> Env
-where
-    I: IntoIterator<Item = &'a Env>,
-{
-    let mut new_env = Env::new();
-    for env in envs {
-        new_env.add_all(env.names())
-    }
-    new_env
 }
 
 #[derive(Debug)]
@@ -642,7 +640,7 @@ mod tests {
         let mut second = Env::new();
         second.add_all(&["fourth", "fifth", "fourth"]);
 
-        let merged = merge_envs(&[first, second]);
+        let merged = Env::merged(&[first, second]);
 
         assert_eq!(
             merged.names().map(AsRef::as_ref).collect::<Vec<_>>(),
