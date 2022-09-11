@@ -126,7 +126,7 @@ impl<'a> LplBooleGenerator<'a> {
         let close_timestamp = open_timestamp + self.time_spent as u128;
 
         output.push_str(open_timestamp.to_string().as_str());
-        output.push_str("D");
+        output.push('D');
         output.push_str(close_timestamp.to_string().as_str());
         output.push_str("\rnewFormat\r");
     }
@@ -140,11 +140,11 @@ impl<'a> LplBooleGenerator<'a> {
         output.push_str("v=\"");
         output.extend(values.iter().map(BooleanValue::lpl_boole_encoded));
         output.push_str("\\000\";_fCharIndex=0;_fByBoole=true;");
-        output.push_str("}"); // TruthColumnData
+        output.push('}'); // TruthColumnData
         output.push_str("]_fExpression="); // TruthColumnExist
         output.push_str(name);
         output.push_str(";_fStatusColumn@o()");
-        output.push_str("}"); // BooleExpressionData
+        output.push('}'); // BooleExpressionData
     }
 
     fn write_generated_columns(&self, output: &mut String) {
@@ -157,7 +157,7 @@ impl<'a> LplBooleGenerator<'a> {
             self.write_generated_column(output, values, name);
 
             if idx != count - 1 {
-                output.push_str(",");
+                output.push(',');
             }
         }
     }
@@ -171,21 +171,21 @@ impl<'a> LplBooleGenerator<'a> {
         let checksum = circle_shift_checksum(&output).to_string();
         output.push_str("s=");
         output.push_str(&checksum);
-        output.push_str(";");
+        output.push(';');
     }
 
     fn write_subcolumns(&self, output: &mut String, subcols_data: &[SubColumnData]) {
         output.push_str("_fTruthColumnExist:");
         output.push_str(subcols_data.len().to_string().as_str());
-        output.push_str("[");
+        output.push('[');
 
         for (idx, data) in subcols_data.iter().enumerate() {
             data.write(output);
             if idx != subcols_data.len() - 1 {
-                output.push_str(",");
+                output.push(',');
             }
         }
-        output.push_str("]");
+        output.push(']');
     }
 
     fn write_answer_column(&self, output: &mut String, expr: &str, subcols_data: &[SubColumnData]) {
@@ -200,7 +200,7 @@ impl<'a> LplBooleGenerator<'a> {
 
         self.write_status_column(output, 1 << self.env.var_count());
 
-        output.push_str("}");
+        output.push('}');
     }
 
     fn write_answer_columns(&self, output: &mut String) {
@@ -215,7 +215,7 @@ impl<'a> LplBooleGenerator<'a> {
 
                     let cols = generate_subcolumn_data(node, &self.env);
                     self.write_answer_column(output, node.lpl_formatted().as_str(), &cols);
-                    output.push_str(",");
+                    output.push(',');
                 }
             }
             // This won't remove a character which is not a ',' because it is guarenteed that the last
@@ -224,7 +224,7 @@ impl<'a> LplBooleGenerator<'a> {
         } else {
             for tree in self.trees {
                 self.write_columns_for_node(output, tree.root());
-                output.push_str(",");
+                output.push(',');
             }
             output.pop();
         }
@@ -250,7 +250,7 @@ impl<'a> LplBooleGenerator<'a> {
         output.push_str("_fStatusColumn(");
         for num in 0..num_columns {
             self.write_truth_table_row_status(output, true, num);
-            output.push_str(",");
+            output.push(',');
         }
         self.write_truth_table_row_status(output, false, num_columns);
         output.push_str(")o()");
@@ -268,19 +268,19 @@ impl<'a> LplBooleGenerator<'a> {
         self.write_generated_columns(output);
 
         output.push_str(")_fIsReferenceSide=true;"); // fExpVector;
-        output.push_str("}"); // RefData=ExpressionPanelData
+        output.push('}'); // RefData=ExpressionPanelData
         output.push_str("_fSentData=openproof.boole.entities.ExpressionPanelData{");
         output.push_str("_fExpVector(");
 
         self.write_answer_columns(output);
 
         output.push_str(")_fIsReferenceSide=false;"); // fExpVector
-        output.push_str("}"); // SentData=ExpressionPanelData
+        output.push('}'); // SentData=ExpressionPanelData
         output.push_str("_fIsTaut=@;_fIsTTPossible=@;_fAreTautEquiv=@;_fIsLastSentenceTautCon=@;");
         output.push_str("_fIsFirstSentenceTautCon=@;_fNeedToBeComplete=@;isContra=@;isTTContra=@;");
-        output.push_str("}"); // _fAssessmentData=openproof.boole.entities.AssessmentData{
-        output.push_str("}"); // p=openproof.boole.Boole{
-        output.push_str("}"); //=openproof.zen.Openproof
+        output.push('}'); // _fAssessmentData=openproof.boole.entities.AssessmentData{
+        output.push('}'); // p=openproof.boole.Boole{
+        output.push('}'); //=openproof.zen.Openproof
 
         self.write_checksums(output);
     }
@@ -475,7 +475,7 @@ impl SubColumnData {
         output.push_str("v=\"");
         output.extend(self.values.iter().map(BooleanValue::lpl_boole_encoded));
         output.push_str("\\000\";_fCharIndex=0;_fByBoole=false;");
-        output.push_str("}");
+        output.push('}');
     }
 }
 
