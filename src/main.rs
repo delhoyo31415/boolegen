@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use boolegen::{filegen::LpLBooleGeneratorBuilder, parser::SyntaxTree};
 use clap::Parser;
@@ -76,13 +76,12 @@ fn main() -> Result<()> {
         generator.random_open_time(min, max);
     }
 
-    let lpl_output = generator
+    let output_name = cli.output.unwrap_or_else(|| "truth_table.tt".into());
+
+    generator
         .build(&trees)
         .context("Invalid expression for LPL File")?
-        .into_string();
-
-    let output_name = cli.output.unwrap_or_else(|| "truth_table.tt".into());
-    fs::write(&output_name, &lpl_output)
+        .write_to_file(&output_name)
         .with_context(|| format!("Could not write contents to '{}'", output_name.display()))?;
 
     Ok(())

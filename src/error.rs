@@ -31,17 +31,32 @@ impl Display for BooleExprError {
 
 impl Error for BooleExprError {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum FileGeneratorError {
     InvalidExpression(String),
+    IOError(std::io::Error),
 }
 
 impl Display for FileGeneratorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FileGeneratorError::InvalidExpression(msg) => msg.fmt(f),
+            FileGeneratorError::IOError(err) => err.fmt(f),
         }
     }
 }
 
-impl Error for FileGeneratorError {}
+impl Error for FileGeneratorError {
+    fn cause(&self) -> Option<&dyn Error> {
+        match self {
+            FileGeneratorError::IOError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for FileGeneratorError {
+    fn from(err: std::io::Error) -> Self {
+        FileGeneratorError::IOError(err)
+    }
+}
