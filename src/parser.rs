@@ -208,10 +208,10 @@ impl Parser {
         Self { lexer }
     }
 
-    pub fn parse(&mut self) -> Result<SyntaxTree, BooleExprError> {
+    pub fn parse(&mut self) -> Result<Box<ExpressionNode>, BooleExprError> {
         let expr = self.parse_expression(None)?;
         if self.lexer.peek()? == Token::Eof {
-            Ok(SyntaxTree::new(expr))
+            Ok(expr)
         } else {
             self.error("Missing opening parenthesis".to_string())
         }
@@ -418,20 +418,8 @@ impl SyntaxTree {
         }
     }
 
-    pub fn degree(&self) -> usize {
-        self.root.degree()
-    }
-
-    pub fn preorder_traversal(&self) -> impl Iterator<Item = &ExpressionNode> {
-        self.root.preorder_traversal()
-    }
-
-    pub fn postorder_traversal(&self) -> impl Iterator<Item = &ExpressionNode> {
-        self.root.postorder_traversal()
-    }
-
     pub fn transform_equivalent(&mut self) {
-        self.root.transform_equivalent();
+        self.root.transform_equivalent()
     }
 
     pub fn root(&self) -> &ExpressionNode {
@@ -453,7 +441,8 @@ impl FromStr for SyntaxTree {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lexer = Lexer::new(s);
-        Parser::new(lexer).parse()
+        let root = Parser::new(lexer).parse()?;
+        Ok(SyntaxTree::new(root))
     }
 }
 
@@ -525,25 +514,25 @@ mod tests {
 
     #[test]
     fn parser_correctly_parses_expression() {
-        let tree = "a -> ~((c | b) & d)".parse::<SyntaxTree>();
+        let tree: SyntaxTree = "a -> ~((c | b) & d)".parse().unwrap();
 
         let expected = Box::new(ExpressionNode::BinaryExpression(
-            Box::new(ExpressionNode::Var(Rc::from("a"))),
+            Box::new(ExpressionNode::Var("a".into())),
             Box::new(ExpressionNode::NotExpression(Box::new(
                 ExpressionNode::BinaryExpression(
                     Box::new(ExpressionNode::BinaryExpression(
-                        Box::new(ExpressionNode::Var(Rc::from("c"))),
-                        Box::new(ExpressionNode::Var(Rc::from("b"))),
+                        Box::new(ExpressionNode::Var("c".into())),
+                        Box::new(ExpressionNode::Var("b".into())),
                         BinaryOperator::Or,
                     )),
-                    Box::new(ExpressionNode::Var(Rc::from("d"))),
+                    Box::new(ExpressionNode::Var("d".into())),
                     BinaryOperator::And,
                 ),
             ))),
             BinaryOperator::Conditional,
         ));
 
-        assert_eq!(tree.unwrap().root, expected);
+        assert_eq!(tree.root(), &*expected);
     }
 
     #[test]
@@ -563,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_env() {
-        let tree = SyntaxTree::from_str("a -> b & c & a & b ").unwrap();
+        let tree: SyntaxTree = "a -> b & c & a & b ".parse().unwrap();
         let env = tree.env();
 
         assert_eq!(env.var_count(), 3);
@@ -576,7 +565,7 @@ mod tests {
 
     #[test]
     fn syntax_tree_evaluates_expression_correctly() {
-        // Notice this a tautology, so for any value a,b the expression is always true
+        // Notice this is a tautology, so for any value a,b the expression is always true
         let tree: SyntaxTree = "(a -> b) <-> (~a | b)".parse().unwrap();
 
         assert_eq!(
@@ -613,7 +602,7 @@ mod tests {
     #[test]
     fn tree_traversed_in_postorder() {
         let tree: SyntaxTree = "a & b -> c | ~d".parse().unwrap();
-        let mut postorder = tree.postorder_traversal();
+        let mut postorder = tree.root().postorder_traversal();
 
         assert_eq!(postorder.next().unwrap().to_string(), "a");
         assert_eq!(postorder.next().unwrap().to_string(), "b");
