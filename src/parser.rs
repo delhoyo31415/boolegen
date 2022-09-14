@@ -285,7 +285,7 @@ impl Parser {
                 Token::RParen | Token::Eof => break,
                 wrong_token => {
                     return self.error(format!(
-                        "Unexpected token '{wrong_token}', expected binary operator, '(' or EOF"
+                        "Unexpected token '{wrong_token}', expected binary operator, ')' or EOF"
                     ))
                 }
             }
