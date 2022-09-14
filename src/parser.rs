@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::{cmp::Ordering, collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
+use std::{collections::HashMap, fmt::Display, rc::Rc, str::FromStr};
 
 use crate::{
     boolean_value::BooleanValue,
@@ -22,6 +22,13 @@ use crate::{
 };
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
 pub struct Precedence(u32);
+
+impl Precedence {
+    // Returns the minimum precedence possible
+    pub fn min() -> Self {
+        Self(0)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BinaryOperator {
@@ -63,23 +70,20 @@ impl BinaryOperator {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum Operator {
-    Binary(BinaryOperator),
+pub enum UnaryOperator {
     Not,
 }
 
-impl Operator {
+impl UnaryOperator {
     pub fn precedence(&self) -> Precedence {
         match self {
-            Operator::Binary(op) => op.precedence(),
-            Operator::Not => Precedence(3),
+            UnaryOperator::Not => Precedence(3),
         }
     }
 
     pub fn symbol(&self) -> &'static str {
         match self {
-            Operator::Binary(op) => op.symbol(),
-            Operator::Not => "~",
+            UnaryOperator::Not => "~",
         }
     }
 }
@@ -209,7 +213,7 @@ impl Parser {
     }
 
     pub fn parse(&mut self) -> Result<Box<ExpressionNode>, BooleExprError> {
-        let expr = self.parse_expression(None)?;
+        let expr = self.parse_expression(Precedence::min())?;
         if self.lexer.peek()? == Token::Eof {
             Ok(expr)
         } else {
@@ -220,12 +224,12 @@ impl Parser {
     fn parse_prefix(&mut self) -> Result<Box<ExpressionNode>, BooleExprError> {
         let lhs = match self.lexer.consume()? {
             Token::Tilde => {
-                let expr = self.parse_expression(Some(Operator::Not))?;
+                let expr = self.parse_expression(UnaryOperator::Not.precedence())?;
                 Box::new(ExpressionNode::NotExpression(expr))
             }
             Token::Identifier(name) => Box::new(ExpressionNode::Var(name)),
             Token::LParen => {
-                let expr = self.parse_expression(None)?;
+                let expr = self.parse_expression(Precedence::min())?;
                 if self.lexer.consume()? != Token::RParen {
                     return self.error("Missing closing parenthesis".to_string());
                 }
@@ -241,51 +245,42 @@ impl Parser {
         Ok(lhs)
     }
 
-    fn stop_recursion(
-        &self,
-        binary_op: BinaryOperator,
-        prev_op: Option<Operator>,
-    ) -> Result<bool, BooleExprError> {
-        if let Some(prev_op) = prev_op {
-            match prev_op.precedence().cmp(&binary_op.precedence()) {
-                Ordering::Equal => {
-                    if Operator::Binary(binary_op) == prev_op && binary_op.is_associative() {
-                        Ok(true)
-                    } else {
-                        self.error(format!(
-                            "Ambiguous expression, '{}' followed by '{}'",
-                            prev_op.symbol(),
-                            binary_op.symbol()
-                        ))
-                    }
-                }
-                Ordering::Greater => Ok(true),
-                Ordering::Less => Ok(false),
-            }
-        } else {
-            Ok(false)
-        }
-    }
-
     fn parse_infix(
         &mut self,
         mut lhs: Box<ExpressionNode>,
-        prev_op: Option<Operator>,
+        precedence: Precedence,
     ) -> Result<Box<ExpressionNode>, BooleExprError> {
         loop {
             let token = self.lexer.peek()?;
 
             match token {
                 Token::Ampersand | Token::Pipe | Token::Arrow | Token::DoubleArrow => {
-                    let op = self.parse_binary_operator(&token).unwrap();
+                    let current_op = self.parse_binary_operator(&token).unwrap();
 
-                    if self.stop_recursion(op, prev_op)? {
+                    if precedence >= current_op.precedence() {
                         break;
                     }
 
                     self.lexer.consume()?;
-                    let rhs = self.parse_expression(Some(Operator::Binary(op)))?;
-                    lhs = Box::new(ExpressionNode::BinaryExpression(lhs, rhs, op))
+                    // We return either because we have find an operator with equal or less precedence
+                    // or EOF has been reached
+                    let rhs = self.parse_expression(current_op.precedence())?;
+
+                    // Check for ambiguity
+                    let next_token = self.lexer.peek()?;
+                    if let Some(next_op) = self.parse_binary_operator(&next_token) {
+                        if current_op.precedence() == next_op.precedence()
+                            && (current_op != next_op || !current_op.is_associative())
+                        {
+                            return self.error(format!(
+                                "Ambiguous expression, '{}' followed by '{}'",
+                                current_op.symbol(),
+                                next_op.symbol()
+                            ));
+                        }
+                    }
+
+                    lhs = Box::new(ExpressionNode::BinaryExpression(lhs, rhs, current_op))
                 }
                 Token::RParen | Token::Eof => break,
                 wrong_token => {
@@ -300,10 +295,10 @@ impl Parser {
 
     fn parse_expression(
         &mut self,
-        prev_op: Option<Operator>,
+        precedence: Precedence,
     ) -> Result<Box<ExpressionNode>, BooleExprError> {
         let lhs = self.parse_prefix()?;
-        self.parse_infix(lhs, prev_op)
+        self.parse_infix(lhs, precedence)
     }
 
     // If op is not a binary operator, return None
