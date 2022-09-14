@@ -21,6 +21,9 @@ ARGS:
             The boolean expressions for which you want to generate a truth table
 
 OPTIONS:
+    -a, --all-subexpressions
+            Alias for -s 0
+
     -d, --duration <SECONDS_SPENT>...
             The time spent (in seconds) with the LPL Boole file open. If two arguments are given,
             then this quantity will be a number chosen randomly between the given numbers
@@ -108,9 +111,9 @@ boolegen "A -> B & C & (D <-> ~(E | F) & A & P)" -t -o expr.tt
 boolegen "A -> B & C & (D <-> ~(E | F) & A & P)" -t -s 3 -o expr.tt
 ```
 
-- The following command will write two expressions with the maximum parenthesis removed and the subexpressions of each one to a file named `expr.tt`
+- The following command will write two expressions with the maximum parenthesis removed and all the subexpressions of each one to a file named `expr.tt`
 ```
-boolegen "A -> (B -> C)" "(E & D) | A" -t -s 0 -o expr.tt
+boolegen "A -> (B -> C)" "(E & D) | A" -t -a -o expr.tt
 ```
 # Build
 You need a Rust installation in your system. Once installed, use `cargo` to compile it

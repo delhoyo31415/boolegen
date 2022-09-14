@@ -39,6 +39,9 @@ struct Cli {
     /// only the main expression will be written
     #[clap(short, long, value_name = "MIN_DEGREE")]
     subexpressions: Option<u32>,
+    /// Alias for -s 0
+    #[clap(short, long, conflicts_with = "subexpressions")]
+    all_subexpressions: bool,
     #[clap(short = 'd', long = "duration", max_values = 2)]
     /// The time spent (in seconds) with the LPL Boole file open. If two arguments are given, then this quantity
     /// will be a number chosen randomly between the given numbers
@@ -64,7 +67,12 @@ fn main() -> Result<()> {
     }
 
     let mut generator = LpLBooleGeneratorBuilder::new();
-    generator.write_subexpressions(cli.subexpressions);
+
+    generator.write_subexpressions(if cli.all_subexpressions {
+        Some(0)
+    } else {
+        cli.subexpressions
+    });
 
     if cli.seconds_spent.len() == 1 {
         generator.open_time(cli.seconds_spent[0]);
