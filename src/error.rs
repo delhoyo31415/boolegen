@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, io};
 #[derive(Debug, Clone)]
 pub enum BooleExprError {
     LexerError(String),
@@ -32,31 +32,34 @@ impl Display for BooleExprError {
 impl Error for BooleExprError {}
 
 #[derive(Debug)]
-pub enum FileGeneratorError {
-    InvalidExpression(String),
-    IOError(std::io::Error),
+pub enum BoolegenError {
+    SyntaxError(BooleExprError),
+    InvalidLplVar(String),
+    WriteError(io::Error),
 }
 
-impl Display for FileGeneratorError {
+impl Display for BoolegenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FileGeneratorError::InvalidExpression(msg) => msg.fmt(f),
-            FileGeneratorError::IOError(err) => err.fmt(f),
+            BoolegenError::SyntaxError(err) => err.fmt(f),
+            BoolegenError::InvalidLplVar(var) => {
+                write!(f, "'{}' is not a valid LPL Boole variable name", var)
+            }
+            BoolegenError::WriteError(err) => err.fmt(f),
         }
     }
 }
 
-impl Error for FileGeneratorError {
-    fn cause(&self) -> Option<&dyn Error> {
-        match self {
-            FileGeneratorError::IOError(err) => Some(err),
-            _ => None,
-        }
+impl Error for BoolegenError {}
+
+impl From<BooleExprError> for BoolegenError {
+    fn from(err: BooleExprError) -> Self {
+        BoolegenError::SyntaxError(err)
     }
 }
 
-impl From<std::io::Error> for FileGeneratorError {
-    fn from(err: std::io::Error) -> Self {
-        FileGeneratorError::IOError(err)
+impl From<io::Error> for BoolegenError {
+    fn from(err: io::Error) -> Self {
+        BoolegenError::WriteError(err)
     }
 }

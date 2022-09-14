@@ -15,7 +15,7 @@
 
 use std::path::PathBuf;
 
-use boolegen::{filegen::LpLBooleGeneratorBuilder, parser::SyntaxTree};
+use boolegen::{filegen::LpLBooleGeneratorBuilder, lpl_syntax_tree::LplSyntaxTree};
 use clap::Parser;
 
 use anyhow::{bail, Context, Result};
@@ -42,7 +42,7 @@ struct Cli {
     #[clap(short = 'd', long = "duration", max_values = 2)]
     /// The time spent (in seconds) with the LPL Boole file open. If two arguments are given, then this quantity
     /// will be a number chosen randomly between the given numbers
-    seconds_spent: Vec<u32>,
+    seconds_spent: Vec<u64>,
 }
 
 fn main() -> Result<()> {
@@ -52,13 +52,15 @@ fn main() -> Result<()> {
         .expressions
         .into_iter()
         .map(|expr| {
-            expr.parse::<SyntaxTree>()
+            expr.parse::<LplSyntaxTree>()
                 .with_context(|| format!("Invalid expression '{}'", expr))
         })
         .collect::<Result<Vec<_>, _>>()?;
 
     if cli.transform {
-        trees.iter_mut().for_each(SyntaxTree::transform_equivalent);
+        trees
+            .iter_mut()
+            .for_each(LplSyntaxTree::transform_equivalent)
     }
 
     let mut generator = LpLBooleGeneratorBuilder::new();
@@ -80,7 +82,6 @@ fn main() -> Result<()> {
 
     generator
         .build(&trees)
-        .context("Invalid expression for LPL File")?
         .write_to_file(&output_name)
         .with_context(|| format!("Could not write contents to '{}'", output_name.display()))?;
 
