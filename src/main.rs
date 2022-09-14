@@ -42,7 +42,7 @@ struct Cli {
     #[clap(short = 'd', long = "duration", max_values = 2)]
     /// The time spent (in seconds) with the LPL Boole file open. If two arguments are given, then this quantity
     /// will be a number chosen randomly between the given numbers
-    seconds_spent: Vec<u32>,
+    seconds_spent: Vec<u64>,
 }
 
 fn main() -> Result<()> {

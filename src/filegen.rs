@@ -27,7 +27,7 @@ pub struct LpLBooleGeneratorBuilder {
     // If it is not None, write the subexpressions with at least a given degree
     write_subexpressions: Option<u32>,
     // Time spent since the file was open and saved, in seconds
-    seconds_spent: u32,
+    seconds_spent: u64,
 }
 
 impl LpLBooleGeneratorBuilder {
@@ -40,7 +40,7 @@ impl LpLBooleGeneratorBuilder {
         self
     }
 
-    pub fn random_open_time(&mut self, min: u32, max: u32) -> &mut Self {
+    pub fn random_open_time(&mut self, min: u64, max: u64) -> &mut Self {
         use rand::Rng;
         if max < min {
             panic!("lower bound cannot be higher than upper bound");
@@ -49,7 +49,7 @@ impl LpLBooleGeneratorBuilder {
         self
     }
 
-    pub fn open_time(&mut self, seconds_spent: u32) -> &mut Self {
+    pub fn open_time(&mut self, seconds_spent: u64) -> &mut Self {
         self.seconds_spent = seconds_spent;
         self
     }
@@ -79,7 +79,7 @@ pub struct LplBooleGenerator<'a> {
     trees: &'a [LplSyntaxTree],
     buffer_capacity: usize,
     write_subexpressions: Option<u32>,
-    time_spent: u32,
+    time_spent: u64,
     env: Env,
 }
 
@@ -107,10 +107,10 @@ impl<'a> LplBooleGenerator<'a> {
         let open_timestamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("Time went before EPOCH")
-            .as_millis();
+            .as_millis() as u64;
 
         // Timestamp when the file is saved
-        let close_timestamp = open_timestamp + self.time_spent as u128;
+        let close_timestamp = open_timestamp + self.time_spent;
 
         output.push_str(open_timestamp.to_string().as_str());
         output.push('D');
