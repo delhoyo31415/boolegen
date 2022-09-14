@@ -26,26 +26,41 @@ struct Cli {
     /// The boolean expressions for which you want to generate a truth table
     #[clap(required = true, min_values = 1)]
     expressions: Vec<String>,
+
     /// Output filename
     #[clap(short, long)]
     output: Option<PathBuf>,
+
     /// Modify the AST of the expression to get an equivalent one using the associative property of AND and OR binary operators,
     /// resulting in a expression with less parenthesis
     #[clap(short, long)]
     transform: bool,
+
     /// Show subexpressions in different columns with a degree of at least <MIN_DEGREE>
     ///
     /// In case the given number is greater than the degree of the main expression then
     /// only the main expression will be written
     #[clap(short, long, value_name = "MIN_DEGREE")]
     subexpressions: Option<u32>,
+
     /// Alias for -s 0
     #[clap(short, long, conflicts_with = "subexpressions")]
     all_subexpressions: bool,
-    #[clap(short = 'd', long = "duration", max_values = 2)]
-    /// The time spent (in seconds) with the LPL Boole file open. If two arguments are given, then this quantity
-    /// will be a number chosen randomly between the given numbers
-    seconds_spent: Vec<u64>,
+
+    #[clap(short, long, value_name = "SECONDS", group = "time")]
+    /// The seconds representing the time that LPL Boole is running since it was opened that will be written to the file.
+    duration: Option<u64>,
+
+    #[clap(
+        short,
+        long,
+        number_of_values = 2,
+        value_name = "BOUND",
+        group = "time"
+    )]
+    /// Same as -d, but the seconds is a number chosen uniformely at random between the first and second provided number,
+    /// where the first one is less than or equal to the second one
+    random_duration: Vec<u64>,
 }
 
 fn main() -> Result<()> {
@@ -74,14 +89,15 @@ fn main() -> Result<()> {
         cli.subexpressions
     });
 
-    if cli.seconds_spent.len() == 1 {
-        generator.open_time(cli.seconds_spent[0]);
-    } else if cli.seconds_spent.len() == 2 {
-        let min = cli.seconds_spent[0];
-        let max = cli.seconds_spent[1];
-
+    if let Some(duration) = cli.duration {
+        generator.open_time(duration);
+    } else if let &[min, max] = &cli.random_duration[..] {
         if min > max {
-            bail!("Lower bound for time cannot be greater than upper bound")
+            bail!(
+                "Lower bound for time cannot be greater than upper bound: '{}' > '{}'",
+                min,
+                max
+            );
         }
         generator.random_open_time(min, max);
     }

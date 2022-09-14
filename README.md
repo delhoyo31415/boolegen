@@ -24,15 +24,19 @@ OPTIONS:
     -a, --all-subexpressions
             Alias for -s 0
 
-    -d, --duration <SECONDS_SPENT>...
-            The time spent (in seconds) with the LPL Boole file open. If two arguments are given,
-            then this quantity will be a number chosen randomly between the given numbers
+    -d, --duration <DURATION>
+            The seconds representing the time that LPL Boole is running that will be written to the
+            file
 
     -h, --help
             Print help information
 
     -o, --output <OUTPUT>
             Output filename
+
+    -r, --random-duration <BOUND> <BOUND>
+            This option takes two arguments which correspond to the lower and upper bound of the
+            seconds representing the time that LPL Boole is running that will be written to the file
 
     -s, --subexpressions <MIN_DEGREE>
             Show subexpressions in different columns with a degree of at least <MIN_DEGREE>
